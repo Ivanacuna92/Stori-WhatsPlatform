@@ -108,8 +108,7 @@ function Login({ onLoginSuccess }) {
 
           <div className="text-xs text-gray-500 text-center mt-4">
             <strong>Usuarios por defecto:</strong><br />
-            <strong>Admin:</strong> admin@navetect.com / Navetect*2025<br />
-            <strong>Soporte:</strong> soporte@navetec.com / Soporte*2025
+            <strong>Admin:</strong> admin@aloia.com / AloIA*2025<br />
           </div>
         </form>
       </div>
