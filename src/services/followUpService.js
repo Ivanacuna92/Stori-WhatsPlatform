@@ -193,6 +193,15 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
                     const followUpMessage = this.getFollowUpMessage(followUp.attempts);
                     console.log(`📨 Enviando mensaje de seguimiento (intento ${followUp.attempts + 1}/${this.maxAttempts}) a ${userId}`);
 
+                    // Verificar si el socket está conectado
+                    if (!sock || !sock.user) {
+                        console.log('⚠️ Bot desconectado, postponiendo seguimiento...');
+                        // Postponer 5 minutos
+                        followUp.nextFollowUp = now + (5 * 60 * 1000);
+                        this.followUps.set(userId, followUp);
+                        continue;
+                    }
+
                     await sock.sendMessage(followUp.chatId, { text: followUpMessage });
                     await logger.log('BOT', followUpMessage, userId);
 
@@ -213,7 +222,14 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
 
                     await logger.log('SYSTEM', `Seguimiento enviado (intento ${followUp.attempts}/${this.maxAttempts})`, userId);
                 } catch (error) {
-                    console.error('❌ Error enviando seguimiento:', error);
+                    console.error('❌ Error enviando seguimiento:', error.message || error);
+
+                    // Si hay error de conexión, postponer el seguimiento
+                    if (error.message && error.message.includes('Connection Closed')) {
+                        console.log('⚠️ Conexión cerrada, reintentando en 5 minutos...');
+                        followUp.nextFollowUp = now + (5 * 60 * 1000);
+                        this.followUps.set(userId, followUp);
+                    }
                 }
             }
         }
