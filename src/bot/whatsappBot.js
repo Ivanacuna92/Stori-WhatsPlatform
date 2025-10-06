@@ -8,6 +8,7 @@ const aiService = require('../services/aiService');
 const sessionManager = require('../services/sessionManager');
 const promptLoader = require('../services/promptLoader');
 const humanModeManager = require('../services/humanModeManager');
+const followUpService = require('../services/followUpService');
 
 class WhatsAppBot {
     constructor() {
@@ -114,6 +115,7 @@ class WhatsAppBot {
                 this.isReconnecting = false;
                 logger.log('SYSTEM', 'Bot iniciado correctamente con Baileys');
                 sessionManager.startCleanupTimer(this.sock);
+                followUpService.startFollowUpTimer(this.sock);
             }
         });
         
@@ -166,20 +168,33 @@ class WhatsAppBot {
                 const userName = msg.pushName || userId;
                 
                 await logger.log('cliente', conversation, userId, userName);
-                
+
                 // Verificar si está en modo humano o soporte
                 const isHuman = await humanModeManager.isHumanMode(userId);
                 const isSupport = await humanModeManager.isSupportMode(userId);
-                
+
                 if (isHuman || isSupport) {
                     const mode = isSupport ? 'SOPORTE' : 'HUMANO';
                     await logger.log('SYSTEM', `Mensaje ignorado - Modo ${mode} activo para ${userName} (${userId})`);
                     return;
                 }
-                
+
+                // Si hay seguimiento activo, cancelarlo (el cliente respondió)
+                if (followUpService.hasActiveFollowUp(userId)) {
+                    await followUpService.cancelFollowUp(userId, 'Cliente respondió');
+                }
+
                 // Procesar mensaje y generar respuesta
                 const response = await this.processMessage(userId, conversation, from);
-                
+
+                // Analizar respuesta del usuario para detectar aceptación, rechazo o frustración
+                const session = await sessionManager.getSession(userId, from);
+                const analysisResult = await followUpService.analyzeUserResponse(
+                    userId,
+                    conversation,
+                    session.messages
+                );
+
                 // Enviar respuesta
                 await this.sock.sendMessage(from, { text: response });
                 await logger.log('bot', response, userId, userName);
