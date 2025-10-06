@@ -163,34 +163,14 @@ class SessionManager {
             }
 
             if (now - session.lastActivity > config.sessionTimeout && session.messages.length > 0) {
-                // Verificar si debe iniciar seguimiento (2 horas de inactividad)
-                const shouldStartFollowUp = await followUpService.checkForFollowUpTrigger(
-                    userId,
-                    session.chatId,
-                    session.lastActivity
-                );
-
-                if (shouldStartFollowUp) {
-                    // No enviar mensaje de finalización, el seguimiento se encargará
+                // A los 5 minutos, iniciar seguimiento en lugar de finalizar sesión
+                if (!followUpService.hasActiveFollowUp(userId)) {
+                    await followUpService.startFollowUp(userId, session.chatId);
+                    // No limpiar la sesión, el seguimiento la mantendrá
                     continue;
                 }
 
-                // Enviar mensaje de finalización solo si NO hay seguimiento
-                const endMessage = '⏰ Tu sesión de conversación ha finalizado por inactividad. Puedes escribirme nuevamente para iniciar una nueva conversación.';
-
-                if (session.chatId && sock) {
-                    try {
-                        // Con Baileys, enviamos directamente al chatId
-                        await sock.sendMessage(session.chatId, { text: endMessage });
-                        // Registrar el mensaje de finalización en los logs
-                        await logger.log('BOT', endMessage, userId);
-                    } catch (error) {
-                        console.error('Error enviando mensaje de finalización:', error);
-                    }
-                }
-
-                await this.clearSession(userId);
-                await logger.log('SYSTEM', 'Conversación reiniciada por inactividad', userId);
+                // Si ya hay seguimiento activo, no hacer nada (dejar que el seguimiento maneje)
             }
         }
 
