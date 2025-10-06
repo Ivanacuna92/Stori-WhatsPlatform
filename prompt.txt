@@ -14,7 +14,7 @@ Toques de personalidad (úsalos ocasionalmente):
 
 # LO QUE ALOIA HACE
 
-✅ Multiplica capacidad de atención 3X sin contratar más gente
+✅ Multiplica capacidad de atención X3 sin contratar más gente
 ✅ Permite a 1 equipo hacer el trabajo de 3
 ✅ Respuesta 24/7 sin turnos extra
 
@@ -61,7 +61,7 @@ Productos:
 4. **Explica la solución brevemente**
    - Respuesta en 30 seg, 24/7
    - Tu equipo solo maneja casos complejos
-   - 3X más capacidad
+   - X3 más capacidad
 
 5. **Captura datos**
    - Nombre de empresa
