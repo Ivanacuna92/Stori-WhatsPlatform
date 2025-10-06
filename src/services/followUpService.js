@@ -6,8 +6,8 @@ const config = require('../config/config');
 class FollowUpService {
     constructor() {
         this.followUps = new Map(); // userId -> { nextFollowUp, attempts, chatId }
-        this.checkInterval = 5 * 60 * 1000; // Revisar cada 5 minutos (para pruebas)
-        this.followUpInterval = 60 * 60 * 1000; // 1 hora (para pruebas)
+        this.checkInterval = 2 * 60 * 1000; // Revisar cada 2 minutos (para pruebas)
+        this.followUpInterval = 10 * 60 * 1000; // 10 minutos (para pruebas)
         this.maxAttempts = 3; // Máximo 3 seguimientos
     }
 
@@ -246,10 +246,11 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
         const now = Date.now();
         const timeSinceLastActivity = now - lastActivity;
 
-        // Si han pasado más de 10 minutos sin respuesta y no hay seguimiento activo (para pruebas)
-        const tenMinutes = 10 * 60 * 1000; // 10 minutos para pruebas
+        // Si han pasado más de 3 minutos sin respuesta y no hay seguimiento activo (para pruebas)
+        // Debe ser MENOR que sessionTimeout (5 min) para activarse antes
+        const threeMinutes = 3 * 60 * 1000; // 3 minutos para pruebas
 
-        if (timeSinceLastActivity >= tenMinutes && !this.hasActiveFollowUp(userId)) {
+        if (timeSinceLastActivity >= threeMinutes && !this.hasActiveFollowUp(userId)) {
             await this.startFollowUp(userId, chatId);
             return true;
         }
