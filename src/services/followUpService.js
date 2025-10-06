@@ -25,6 +25,8 @@ class FollowUpService {
             startedAt: now
         });
 
+        console.log(`🚀 Seguimiento iniciado para ${userId} - próximo mensaje en ${this.followUpInterval / 60000} minutos`);
+
         // Guardar en BD
         try {
             await database.query(
@@ -36,7 +38,7 @@ class FollowUpService {
                  new Date(nextFollowUp), 0, chatId, new Date(now)]
             );
 
-            await logger.log('SYSTEM', `Seguimiento iniciado - próximo mensaje en 24h`, userId);
+            await logger.log('SYSTEM', `Seguimiento iniciado - próximo mensaje en ${this.followUpInterval / 60000} min`, userId);
         } catch (error) {
             console.error('Error guardando seguimiento en BD:', error);
         }
@@ -151,9 +153,21 @@ Si no te interesa, está bien - avísame y no te molesto más
     async processFollowUps(sock) {
         const now = Date.now();
 
+        console.log(`🔍 Revisando seguimientos pendientes... (${this.followUps.size} activos)`);
+
+        if (this.followUps.size > 0) {
+            for (const [userId, followUp] of this.followUps.entries()) {
+                const timeRemaining = followUp.nextFollowUp - now;
+                const minutesRemaining = Math.floor(timeRemaining / 60000);
+                console.log(`  - Usuario ${userId}: ${minutesRemaining} minutos restantes, intento ${followUp.attempts}/${this.maxAttempts}`);
+            }
+        }
+
         for (const [userId, followUp] of this.followUps.entries()) {
             // Verificar si es momento de enviar seguimiento
             if (now >= followUp.nextFollowUp) {
+                console.log(`⏰ Es momento de enviar seguimiento a ${userId}`);
+
                 // Verificar si alcanzó máximo de intentos
                 if (followUp.attempts >= this.maxAttempts) {
                     await this.cancelFollowUp(userId, 'Máximo de intentos alcanzado');
@@ -177,6 +191,8 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
                 // Enviar mensaje de seguimiento
                 try {
                     const followUpMessage = this.getFollowUpMessage(followUp.attempts);
+                    console.log(`📨 Enviando mensaje de seguimiento (intento ${followUp.attempts + 1}/${this.maxAttempts}) a ${userId}`);
+
                     await sock.sendMessage(followUp.chatId, { text: followUpMessage });
                     await logger.log('BOT', followUpMessage, userId);
 
@@ -184,6 +200,8 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
                     followUp.attempts++;
                     followUp.nextFollowUp = now + this.followUpInterval;
                     this.followUps.set(userId, followUp);
+
+                    console.log(`✅ Seguimiento enviado. Próximo mensaje en ${this.followUpInterval / 60000} minutos`);
 
                     // Actualizar en BD
                     await database.query(
@@ -195,7 +213,7 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
 
                     await logger.log('SYSTEM', `Seguimiento enviado (intento ${followUp.attempts}/${this.maxAttempts})`, userId);
                 } catch (error) {
-                    console.error('Error enviando seguimiento:', error);
+                    console.error('❌ Error enviando seguimiento:', error);
                 }
             }
         }
