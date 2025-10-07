@@ -9,6 +9,30 @@ class FollowUpService {
         this.checkInterval = 60 * 60 * 1000; // Revisar cada hora
         this.followUpInterval = 24 * 60 * 60 * 1000; // 24 horas
         this.maxAttempts = 3; // Máximo 3 seguimientos
+        this.immediateRetries = 3; // Reintentos inmediatos al fallar
+        this.retryDelay = 30 * 1000; // 30 segundos entre reintentos
+    }
+
+    /**
+     * Verifica si el socket de WhatsApp está conectado y listo
+     */
+    isSocketConnected(sock) {
+        try {
+            return sock &&
+                   sock.user &&
+                   sock.user.id &&
+                   sock.ws &&
+                   sock.ws.readyState === 1; // WebSocket.OPEN
+        } catch (error) {
+            return false;
+        }
+    }
+
+    /**
+     * Espera un tiempo determinado
+     */
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
@@ -188,48 +212,79 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
                     continue;
                 }
 
-                // Enviar mensaje de seguimiento
+                // Enviar mensaje de seguimiento con sistema de reintentos
+                const followUpMessage = this.getFollowUpMessage(followUp.attempts);
+                console.log(`📨 Enviando mensaje de seguimiento (intento ${followUp.attempts + 1}/${this.maxAttempts}) a ${userId}`);
+
+                // Incrementar intento y guardar en BD ANTES de enviar
+                followUp.attempts++;
+                const nextFollowUpTime = now + this.followUpInterval;
+
                 try {
-                    const followUpMessage = this.getFollowUpMessage(followUp.attempts);
-                    console.log(`📨 Enviando mensaje de seguimiento (intento ${followUp.attempts + 1}/${this.maxAttempts}) a ${userId}`);
-
-                    // Verificar si el socket está conectado
-                    if (!sock || !sock.user) {
-                        console.log('⚠️ Bot desconectado, postponiendo seguimiento...');
-                        // Postponer 5 minutos
-                        followUp.nextFollowUp = now + (5 * 60 * 1000);
-                        this.followUps.set(userId, followUp);
-                        continue;
-                    }
-
-                    await sock.sendMessage(followUp.chatId, { text: followUpMessage });
-                    await logger.log('BOT', followUpMessage, userId);
-
-                    // Actualizar seguimiento
-                    followUp.attempts++;
-                    followUp.nextFollowUp = now + this.followUpInterval;
-                    this.followUps.set(userId, followUp);
-
-                    console.log(`✅ Seguimiento enviado. Próximo mensaje en ${this.followUpInterval / 60000} minutos`);
-
-                    // Actualizar en BD
                     await database.query(
                         `UPDATE follow_ups
-                         SET next_follow_up = ?, attempts = ?
+                         SET attempts = ?, next_follow_up = ?
                          WHERE user_id = ?`,
-                        [new Date(followUp.nextFollowUp), followUp.attempts, userId]
+                        [followUp.attempts, new Date(nextFollowUpTime), userId]
                     );
+                } catch (dbError) {
+                    console.error('Error actualizando intento en BD:', dbError);
+                }
 
-                    await logger.log('SYSTEM', `Seguimiento enviado (intento ${followUp.attempts}/${this.maxAttempts})`, userId);
-                } catch (error) {
-                    console.error('❌ Error enviando seguimiento:', error.message || error);
+                let messageSent = false;
+                let lastError = null;
 
-                    // Si hay error de conexión, postponer el seguimiento
-                    if (error.message && error.message.includes('Connection Closed')) {
-                        console.log('⚠️ Conexión cerrada, reintentando en 5 minutos...');
-                        followUp.nextFollowUp = now + (5 * 60 * 1000);
+                // Intentar enviar con reintentos inmediatos
+                for (let retry = 0; retry < this.immediateRetries; retry++) {
+                    try {
+                        // Verificar conexión antes de cada intento
+                        if (!this.isSocketConnected(sock)) {
+                            throw new Error('Socket desconectado');
+                        }
+
+                        await sock.sendMessage(followUp.chatId, { text: followUpMessage });
+                        await logger.log('BOT', followUpMessage, userId);
+
+                        messageSent = true;
+                        console.log(`✅ Seguimiento enviado exitosamente. Próximo mensaje en ${this.followUpInterval / 60000} minutos`);
+
+                        // Actualizar seguimiento
+                        followUp.nextFollowUp = nextFollowUpTime;
                         this.followUps.set(userId, followUp);
+
+                        await logger.log('SYSTEM', `Seguimiento enviado (intento ${followUp.attempts}/${this.maxAttempts})`, userId);
+                        break;
+
+                    } catch (error) {
+                        lastError = error;
+                        console.error(`❌ Error en intento ${retry + 1}/${this.immediateRetries}:`, error.message || error);
+
+                        // Si no es el último intento, esperar antes de reintentar
+                        if (retry < this.immediateRetries - 1) {
+                            console.log(`⏳ Reintentando en ${this.retryDelay / 1000} segundos...`);
+                            await this.sleep(this.retryDelay);
+                        }
                     }
+                }
+
+                // Si después de todos los reintentos no se pudo enviar
+                if (!messageSent) {
+                    console.error(`❌ No se pudo enviar seguimiento después de ${this.immediateRetries} intentos`);
+
+                    // Postponer 10 minutos para el siguiente ciclo de verificación
+                    followUp.nextFollowUp = now + (10 * 60 * 1000);
+                    this.followUps.set(userId, followUp);
+
+                    try {
+                        await database.query(
+                            `UPDATE follow_ups SET next_follow_up = ? WHERE user_id = ?`,
+                            [new Date(followUp.nextFollowUp), userId]
+                        );
+                    } catch (dbError) {
+                        console.error('Error postponiendo seguimiento en BD:', dbError);
+                    }
+
+                    await logger.log('SYSTEM', `Error enviando seguimiento, reintentando en 10 min. Error: ${lastError?.message}`, userId);
                 }
             }
         }
