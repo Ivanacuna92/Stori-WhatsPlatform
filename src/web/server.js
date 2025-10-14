@@ -1362,8 +1362,8 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
     async start() {
         if (process.env.NODE_ENV === 'production') {
             // En producción, usar servidor Express normal
-            this.app.listen(this.port, () => {
-                console.log(`📊 Servidor web de reportes en http://localhost:${this.port}`);
+            this.app.listen(this.port, '0.0.0.0', () => {
+                console.log(`📊 Servidor web de reportes en http://0.0.0.0:${this.port}`);
                 logger.log('SYSTEM', `Servidor web iniciado en puerto ${this.port}`);
             });
         } else {
