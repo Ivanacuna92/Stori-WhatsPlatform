@@ -3,6 +3,7 @@ import ContactsList from './components/ContactsList';
 import ChatPanel from './components/ChatPanel';
 import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
+import QRDisplay from './components/QRDisplay';
 import Header from './components/Header';
 import Login from './components/Login';
 import { checkAuth, logout } from './services/api';
@@ -68,7 +69,7 @@ function App() {
   React.useEffect(() => {
     const handleShowChat = (event) => {
       const contact = event.detail;
-      
+
       // Asegurarse de que el contacto tenga la estructura correcta
       const formattedContact = {
         ...contact,
@@ -82,9 +83,9 @@ function App() {
         isHumanMode: contact.isHumanMode || false,
         mode: contact.mode || 'ai'
       };
-      
+
       setSelectedContact(formattedContact);
-      
+
       // Actualizar o agregar el contacto a la lista
       setContacts(prev => {
         const existing = prev.find(c => c.phone === formattedContact.phone);
@@ -94,13 +95,25 @@ function App() {
           return [formattedContact, ...prev];
         }
       });
-      
+
       setCurrentView('contacts');
     };
 
     window.addEventListener('showChat', handleShowChat);
     return () => window.removeEventListener('showChat', handleShowChat);
   }, []);
+
+  // Escuchar tecla Escape para cerrar el chat
+  useEffect(() => {
+    const handleEscapeKey = (event) => {
+      if (event.key === 'Escape' && selectedContact) {
+        setSelectedContact(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, [selectedContact]);
 
   // Mostrar loading mientras verifica auth
   if (loading) {
@@ -131,19 +144,21 @@ function App() {
         <Dashboard />
       ) : currentView === 'reports' ? (
         <Reports />
+      ) : currentView === 'whatsapp' && user?.role === 'admin' ? (
+        <QRDisplay />
       ) : (
         <div className="flex flex-1 overflow-hidden">
-          <ContactsList 
+          <ContactsList
             contacts={contacts}
             setContacts={setContacts}
             selectedContact={selectedContact}
             onSelectContact={setSelectedContact}
           />
-          <ChatPanel 
+          <ChatPanel
             contact={selectedContact}
             onUpdateContact={(updatedContact) => {
               setSelectedContact(updatedContact);
-              setContacts(prev => prev.map(c => 
+              setContacts(prev => prev.map(c =>
                 c.phone === updatedContact.phone ? updatedContact : c
               ));
             }}

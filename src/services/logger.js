@@ -6,7 +6,7 @@ class Logger {
         this.isProcessingQueue = false;
     }
 
-    async log(role, message, userId = null, userName = null, response = null, supportUserId = null) {
+    async log(role, message, userId = null, userName = null, response = null, supportUserId = null, messageId = null) {
         const timestamp = new Date();
         const logEntry = {
             timestamp: timestamp.toISOString(),
@@ -15,36 +15,44 @@ class Logger {
             userName,
             message,
             response,
-            supportUserId
+            supportUserId,
+            messageId,
+            status: messageId ? 'sent' : null // Si hay messageId, el mensaje fue enviado
         };
 
         // Solo guardar en BD y mostrar en consola
-        await this.saveToDB(logEntry);
+        const insertedId = await this.saveToDB(logEntry);
         this.printToConsole(logEntry.timestamp, role, message, userId);
+
+        return insertedId;
     }
 
     async saveToDB(logEntry) {
         // Solo guardar en BD si hay un userId válido (logs de conversaciones)
         if (!logEntry.userId) {
-            return; // Skip logs de sistema sin usuario
+            return null; // Skip logs de sistema sin usuario
         }
-        
+
         try {
-            await database.insert('conversation_logs', {
+            const result = await database.insert('conversation_logs', {
                 timestamp: new Date(logEntry.timestamp),
                 user_id: logEntry.userId,
                 user_name: logEntry.userName,
                 message: logEntry.message,
+                message_id: logEntry.messageId,
+                status: logEntry.status,
                 response: logEntry.response,
                 role: logEntry.role,
                 support_user_id: logEntry.supportUserId,
                 session_id: null
             });
+            return result.insertId;
         } catch (error) {
             console.error('Error guardando log en BD:', error);
             // Agregar a cola para reintento posterior
             this.logQueue.push(logEntry);
             this.processLogQueue();
+            return null;
         }
     }
 
@@ -140,6 +148,8 @@ class Logger {
                     userId: log.user_id,
                     userName: log.user_name,
                     message: log.message,
+                    messageId: log.message_id,
+                    status: log.status,
                     response: log.response,
                     supportUserId: log.support_user_id
                 };
@@ -167,7 +177,7 @@ class Logger {
     async getStats(date = null) {
         try {
             let query = `
-                SELECT 
+                SELECT
                     COUNT(*) as total_messages,
                     COUNT(DISTINCT user_id) as unique_users,
                     SUM(CASE WHEN is_human_response = 1 THEN 1 ELSE 0 END) as human_responses,
@@ -175,12 +185,12 @@ class Logger {
                 FROM conversation_logs
             `;
             let params = [];
-            
+
             if (date) {
                 query += ' WHERE DATE(timestamp) = ?';
                 params.push(date);
             }
-            
+
             const stats = await database.query(query, params);
             return stats[0] || {
                 total_messages: 0,
@@ -196,6 +206,23 @@ class Logger {
                 human_responses: 0,
                 ai_responses: 0
             };
+        }
+    }
+
+    async updateMessageStatus(messageId, status) {
+        if (!messageId || !status) {
+            return false;
+        }
+
+        try {
+            await database.query(
+                'UPDATE conversation_logs SET status = ? WHERE message_id = ?',
+                [status, messageId]
+            );
+            return true;
+        } catch (error) {
+            console.error('Error actualizando estado de mensaje:', error);
+            return false;
         }
     }
 

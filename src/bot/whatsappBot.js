@@ -130,6 +130,47 @@ class WhatsAppBot {
             }
         }
         
+        // Manejar actualizaciones de estado de mensajes
+        this.sock.ev.on('messages.update', async (updates) => {
+            for (const update of updates) {
+                try {
+                    const messageId = update.key.id;
+                    const userId = update.key.remoteJid?.replace('@s.whatsapp.net', '');
+
+                    // Log para debugging
+                    console.log('📱 Update recibido:', JSON.stringify(update, null, 2));
+
+                    // Determinar el estado según el update
+                    let status = null;
+
+                    // Status codes de WhatsApp:
+                    // 1 = sent (enviado al servidor)
+                    // 2 = delivered (entregado al dispositivo)
+                    // 3 = played (mensaje de voz reproducido o estado intermedio)
+                    // 4 = read (leído - checks azules)
+
+                    if (update.update.status === 4) {
+                        status = 'read'; // Mensaje leído (checks azules)
+                        console.log('🔵 LEÍDO detectado - Status 4');
+                    } else if (update.update.status === 2) {
+                        status = 'delivered'; // Mensaje entregado (double check gris)
+                        console.log('⚪ ENTREGADO detectado - Status 2');
+                    } else if (update.update.status === 1) {
+                        status = 'sent'; // Mensaje enviado (single check)
+                        console.log('⚪ ENVIADO detectado - Status 1');
+                    }
+                    // Ignorar status 3 (estado intermedio/voz reproducida)
+
+                    if (status && messageId) {
+                        await logger.updateMessageStatus(messageId, status);
+                        console.log(`✅ Estado actualizado: ${messageId} -> ${status} (Usuario: ${userId})`);
+                    }
+                } catch (error) {
+                    console.error('Error actualizando estado de mensaje:', error);
+                }
+            }
+        });
+
         // Manejar mensajes entrantes
         this.sock.ev.on('messages.upsert', async (m) => {
             try {
@@ -195,9 +236,10 @@ class WhatsAppBot {
                     session.messages
                 );
 
-                // Enviar respuesta
-                await this.sock.sendMessage(from, { text: response });
-                await logger.log('bot', response, userId, userName);
+                // Enviar respuesta y capturar messageId
+                const sentMsg = await this.sock.sendMessage(from, { text: response });
+                const messageId = sentMsg?.key?.id;
+                await logger.log('bot', response, userId, userName, null, null, messageId);
                 
             } catch (error) {
                 await this.handleError(error, m.messages[0]);

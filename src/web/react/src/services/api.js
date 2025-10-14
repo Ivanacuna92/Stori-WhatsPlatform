@@ -189,21 +189,25 @@ function processContactsFromLogs(logs, humanStates) {
     contacts[phone].messages.push(processedLog);
     contacts[phone].totalMessages++;
     contacts[phone].lastActivity = log.timestamp;
-    
+
     if (log.type === 'USER' || log.type === 'CLIENTE') {
       contacts[phone].userMessages++;
-      contacts[phone].lastMessage = {
-        text: log.message,
-        time: log.timestamp,
-        type: 'user'
-      };
     } else if (log.type === 'BOT' || log.type === 'HUMAN') {
       contacts[phone].botMessages++;
-      contacts[phone].lastMessage = {
-        text: log.message,
-        time: log.timestamp,
-        type: log.type.toLowerCase()
-      };
+    }
+
+    // Actualizar lastMessage solo si este mensaje es más reciente
+    if (log.type === 'USER' || log.type === 'CLIENTE' || log.type === 'BOT' || log.type === 'HUMAN') {
+      const messageTimestamp = new Date(log.timestamp);
+      const lastMessageTimestamp = contacts[phone].lastMessage ? new Date(contacts[phone].lastMessage.time) : null;
+
+      if (!lastMessageTimestamp || messageTimestamp >= lastMessageTimestamp) {
+        contacts[phone].lastMessage = {
+          text: log.message,
+          time: log.timestamp,
+          type: log.type === 'USER' || log.type === 'CLIENTE' ? 'user' : log.type.toLowerCase()
+        };
+      }
     }
   });
   
@@ -306,10 +310,28 @@ export async function deleteCSV(filename) {
   const response = await fetchWithCredentials(`${API_BASE}/csv/delete/${filename}`, {
     method: 'DELETE'
   });
-  
+
   if (!response.ok) {
     throw new Error('Error al eliminar archivo CSV');
   }
-  
+
   return response.json();
+}
+
+// ===== FUNCIONES DE WHATSAPP =====
+
+export async function checkWhatsAppStatus() {
+  try {
+    const response = await fetchWithCredentials(`${API_BASE}/qr`);
+
+    if (!response.ok) {
+      return { connected: false, error: true };
+    }
+
+    const data = await response.json();
+    // Si hay QR, no está conectado. Si no hay QR, está conectado.
+    return { connected: !data.qr, error: false };
+  } catch (error) {
+    return { connected: false, error: true };
+  }
 }

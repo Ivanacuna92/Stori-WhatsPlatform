@@ -4,37 +4,82 @@ import { fetchContacts, toggleHumanMode } from '../services/api';
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [lastReadMessages, setLastReadMessages] = useState(() => {
+    // Cargar del localStorage al iniciar
+    const saved = localStorage.getItem('lastReadMessages');
+    return saved ? JSON.parse(saved) : {};
+  });
 
   useEffect(() => {
     loadContacts();
-    const interval = setInterval(loadContacts, 2000); // Actualizar cada 2 segundos para ver mensajes más rápido
+    const interval = setInterval(loadContacts, 5000); // Actualizar cada 5 segundos (balance entre rendimiento y UX)
     return () => clearInterval(interval);
   }, [selectedContact]);
+
+  // Guardar en localStorage cada vez que cambie
+  useEffect(() => {
+    localStorage.setItem('lastReadMessages', JSON.stringify(lastReadMessages));
+  }, [lastReadMessages]);
 
   const loadContacts = async () => {
     try {
       const data = await fetchContacts();
-      // console.log('[ContactsList] Loaded contacts:', data); // DEBUG
-      setContacts(data);
-      
-      // Si hay un contacto seleccionado, actualizar sus mensajes
+
+      // Actualizar solo si hay cambios reales
+      setContacts(prevContacts => {
+        // Si no hay contactos previos, actualizar
+        if (prevContacts.length === 0) return data;
+
+        // Comparar si hay cambios reales
+        const hasChanges = data.some(newContact => {
+          const oldContact = prevContacts.find(c => c.phone === newContact.phone);
+          if (!oldContact) return true; // Contacto nuevo
+
+          // Verificar si hay cambios en mensajes o estado
+          return (
+            oldContact.messages.length !== newContact.messages.length ||
+            oldContact.mode !== newContact.mode ||
+            oldContact.isHumanMode !== newContact.isHumanMode
+          );
+        });
+
+        // Solo actualizar si hay cambios
+        return hasChanges ? data : prevContacts;
+      });
+
+      // Si hay un contacto seleccionado, actualizar sus mensajes solo si hay cambios
       if (selectedContact) {
         const updatedContact = data.find(c => c.phone === selectedContact.phone);
         if (updatedContact) {
-          // Comparar la cantidad de mensajes o el último mensaje
-          const hasNewMessages = 
+          // Detectar cambios en cantidad de mensajes
+          const hasNewMessages =
             updatedContact.messages.length !== selectedContact.messages.length ||
             (updatedContact.messages.length > 0 && selectedContact.messages.length > 0 &&
-             updatedContact.messages[updatedContact.messages.length - 1].timestamp !== 
+             updatedContact.messages[updatedContact.messages.length - 1].timestamp !==
              selectedContact.messages[selectedContact.messages.length - 1].timestamp);
-          
-          if (hasNewMessages) {
-            // console.log('[ContactsList] Contact has new messages, updating:', updatedContact); // DEBUG
+
+          // Detectar cambios en estados de mensajes (checks)
+          const hasStatusChanges = updatedContact.messages.some((newMsg) => {
+            // Buscar el mensaje correspondiente por messageId
+            const oldMsg = selectedContact.messages.find(
+              m => m.messageId && m.messageId === newMsg.messageId
+            );
+            // Si existe y el estado cambió, retornar true
+            return oldMsg && oldMsg.status !== newMsg.status;
+          });
+
+          if (hasNewMessages || hasStatusChanges) {
             onSelectContact(updatedContact);
+
+            // Marcar los nuevos mensajes como leídos automáticamente si estamos viendo este chat
+            setLastReadMessages(prev => ({
+              ...prev,
+              [updatedContact.phone]: updatedContact.messages.length
+            }));
           }
         }
       }
-      
+
       setLoading(false);
     } catch (error) {
       // Error silencioso
@@ -45,7 +90,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
   const handleToggleMode = async (phone, isHuman) => {
     try {
       await toggleHumanMode(phone, isHuman);
-      setContacts(prev => prev.map(c => 
+      setContacts(prev => prev.map(c =>
         c.phone === phone ? { ...c, isHumanMode: isHuman } : c
       ));
     } catch (error) {
@@ -53,13 +98,51 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     }
   };
 
+  const handleSelectContact = (contact) => {
+    // Marcar mensajes como leídos
+    setLastReadMessages(prev => ({
+      ...prev,
+      [contact.phone]: contact.messages.length
+    }));
+    onSelectContact(contact);
+  };
+
+  const getUnreadCount = (contact) => {
+    const lastRead = lastReadMessages[contact.phone] || 0;
+    const unreadCount = contact.messages.length - lastRead;
+    return unreadCount > 0 ? unreadCount : 0;
+  };
+
   const filteredContacts = contacts
-    .filter(contact => contact.phone.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(contact => {
+      const searchLower = searchTerm.toLowerCase();
+
+      // Buscar en el número de teléfono
+      if (contact.phone.toLowerCase().includes(searchLower)) {
+        return true;
+      }
+
+      // Buscar en los mensajes de la conversación
+      if (contact.messages && contact.messages.length > 0) {
+        return contact.messages.some(msg =>
+          msg.message && msg.message.toLowerCase().includes(searchLower)
+        );
+      }
+
+      return false;
+    })
     .sort((a, b) => {
       // Primero los de soporte (prioridad máxima)
       if (a.mode === 'support' && b.mode !== 'support') return -1;
       if (a.mode !== 'support' && b.mode === 'support') return 1;
-      // Luego por última actividad
+
+      // Luego los que tienen mensajes no leídos
+      const unreadA = getUnreadCount(a);
+      const unreadB = getUnreadCount(b);
+      if (unreadA > 0 && unreadB === 0) return -1;
+      if (unreadA === 0 && unreadB > 0) return 1;
+
+      // Finalmente por última actividad
       return new Date(b.lastActivity) - new Date(a.lastActivity);
     });
 
@@ -70,88 +153,153 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
   }
 
   return (
-    <div className="w-96 bg-white border-r border-gray-200 flex flex-col">
-      <div className="p-6 border-b border-gray-200">
-        <h2 className="text-lg font-light text-navetec-primary mb-4">CONTACTOS</h2>
-        <input
-          type="text"
-          placeholder="Buscar..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:border-navetec-primary"
-        />
+    <div className="w-96 flex flex-col" style={{
+      background: '#FAFBFC',
+      borderRight: '1px solid #E8EBED'
+    }}>
+      {/* Header estilo moderno */}
+      <div className="p-6 pb-4">
+        <h2 className="text-base font-semibold text-gray-800 mb-5">Chats</h2>
+        <div className="relative">
+          <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Buscar contacto o mensaje..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl transition-all focus:outline-none text-sm"
+            style={{
+              background: '#F3F4F6',
+              border: '1px solid transparent',
+            }}
+            onFocus={(e) => {
+              e.target.style.background = '#ffffff';
+              e.target.style.border = '1px solid #5c19e3';
+              e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+            }}
+            onBlur={(e) => {
+              e.target.style.background = '#F3F4F6';
+              e.target.style.border = '1px solid transparent';
+              e.target.style.boxShadow = 'none';
+            }}
+          />
+        </div>
       </div>
-      
-      <div className="flex-1 overflow-y-auto">
+
+      {/* Lista de contactos */}
+      <div className="flex-1 overflow-y-auto px-3">
         {filteredContacts.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">No hay contactos</div>
+          <div className="text-center py-12 text-gray-400 text-sm">No hay contactos</div>
         ) : (
           filteredContacts.map(contact => (
             <div
               key={contact.phone}
-              className={`flex items-center p-4 border-b cursor-pointer transition-all ${
-                contact.mode === 'support' 
-                  ? 'bg-orange-50 border-orange-200 hover:bg-orange-100' 
-                  : selectedContact?.phone === contact.phone 
-                    ? 'bg-gray-100 border-gray-100 border-l-4' 
-                    : 'border-gray-100 hover:bg-gray-50'
-              }`}
+              className="mb-1 rounded-xl cursor-pointer transition-all duration-200"
               style={{
-                borderLeftColor: contact.mode === 'support' 
-                  ? '#AE3A8D'
-                  : selectedContact?.phone === contact.phone 
-                    ? '#AE3A8D'
-                    : 'transparent',
-                borderLeftWidth: contact.mode === 'support' ? '4px' : selectedContact?.phone === contact.phone ? '4px' : '0'
+                background: selectedContact?.phone === contact.phone
+                  ? 'rgba(92, 25, 227, 0.08)'
+                  : 'transparent',
+                boxShadow: selectedContact?.phone === contact.phone
+                  ? '0 2px 8px rgba(92, 25, 227, 0.15)'
+                  : 'none',
+                border: selectedContact?.phone === contact.phone
+                  ? '1px solid rgba(92, 25, 227, 0.2)'
+                  : '1px solid transparent'
               }}
-              onClick={() => onSelectContact(contact)}
+              onMouseEnter={(e) => {
+                if (selectedContact?.phone !== contact.phone) {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.04)';
+                  e.currentTarget.style.border = '1px solid #E8EBED';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (selectedContact?.phone !== contact.phone) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.border = '1px solid transparent';
+                }
+              }}
+              onClick={() => handleSelectContact(contact)}
             >
-              <div className="relative mr-4">
-                <div 
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm"
-                  style={{ 
-                    backgroundColor: contact.mode === 'support' ? '#AE3A8D' : '#AE3A8D' 
-                  }}
-                >
-                  {contact.mode === 'support' ? '👤' : contact.phone.slice(-2)}
-                </div>
-                {contact.mode === 'support' && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-orange-600 rounded-full animate-pulse"></div>
-                )}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <div className={`font-medium ${contact.mode === 'support' ? 'text-orange-700' : 'text-navetec-primary'}`}>
-                    {contact.phone}
+              <div className="flex items-center p-3">
+                {/* Avatar moderno */}
+                <div className="relative mr-3">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                    style={{
+                      background: contact.mode === 'support'
+                        ? 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)'
+                        : '#9CA3AF'
+                    }}
+                  >
+                    {contact.mode === 'support' ? '👤' : contact.phone.slice(-2)}
                   </div>
-                  {contact.mode === 'support' && (
-                    <span className="text-xs bg-orange-600 text-white px-2 py-0.5 rounded">
-                      Soporte
-                    </span>
-                  )}
+                  {/* Indicador de estado */}
+                  <div
+                    className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
+                    style={{
+                      background: contact.mode === 'support'
+                        ? '#F97316'
+                        : contact.isHumanMode
+                          ? '#3B82F6'
+                          : '#5c19e3',
+                      borderColor: selectedContact?.phone === contact.phone ? '#ffffff' : '#FAFBFC'
+                    }}
+                  ></div>
                 </div>
-                <div className={`text-sm truncate ${contact.mode === 'support' ? 'text-orange-600' : 'text-gray-500'}`}>
-                  {contact.lastMessage?.text.substring(0, 30)}...
+
+                {/* Info del contacto */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className={`text-sm truncate ${getUnreadCount(contact) > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
+                      {contact.phone}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {getUnreadCount(contact) > 0 && (
+                        <span className="min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{
+                          background: '#5c19e3',
+                          boxShadow: '0 2px 4px rgba(92, 25, 227, 0.3)'
+                        }}>
+                          {getUnreadCount(contact) > 99 ? '99+' : getUnreadCount(contact)}
+                        </span>
+                      )}
+                      {contact.mode === 'support' && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
+                          background: 'rgba(249, 115, 22, 0.1)',
+                          color: '#EA580C'
+                        }}>
+                          Soporte
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className={`text-xs truncate flex-1 pr-2 ${getUnreadCount(contact) > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                      {contact.lastMessage?.text || 'Sin mensajes'}
+                    </p>
+                    <span
+                      className="text-[10px] px-2 py-0.5 rounded-md font-medium"
+                      style={{
+                        background: contact.mode === 'support'
+                          ? 'rgba(249, 115, 22, 0.1)'
+                          : contact.isHumanMode
+                            ? 'rgba(59, 130, 246, 0.1)'
+                            : 'rgba(92, 25, 227, 0.1)',
+                        color: contact.mode === 'support'
+                          ? '#EA580C'
+                          : contact.isHumanMode
+                            ? '#3B82F6'
+                            : '#5c19e3'
+                      }}
+                    >
+                      {contact.mode === 'support' ? 'SOP' : contact.isHumanMode ? 'HUM' : 'IA'}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <button
-                className="px-3 py-1 rounded-md text-xs font-medium transition-all"
-                style={{
-                  backgroundColor: contact.mode === 'support' 
-                    ? '#AE3A8D' 
-                    : contact.isHumanMode 
-                      ? '#AE3A8D' 
-                      : 'white',
-                  color: contact.mode === 'support' || contact.isHumanMode ? 'white' : '#CCB6B6',
-                  border: contact.mode === 'support' || contact.isHumanMode ? 'none' : '1px solid #CCB6B6'
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleMode(contact.phone, !contact.isHumanMode);
-                }}
-              >
-                {contact.mode === 'support' ? 'SOPORTE' : contact.isHumanMode ? 'HUMANO' : 'IA'}
-              </button>
             </div>
           ))
         )}

@@ -132,16 +132,16 @@ function Reports() {
 
   const getStatusBadge = (report) => {
     if (report.ventaCerrada || report.analizadoIA) {
-      return <span className="px-2 py-1 text-xs rounded-full bg-navetec-secondary-3/20 text-navetec-primary-dark">Analizado con IA</span>;
+      return <span className="px-2 py-1 text-xs rounded-full" style={{ background: 'rgba(92, 25, 227, 0.1)', color: '#5c19e3' }}>Analizado con IA</span>;
     }
     if (report.citaAgendada) {
-      return <span className="px-2 py-1 text-xs rounded-full bg-navetec-secondary-1/20 text-navetec-secondary-1">Cita Agendada</span>;
+      return <span className="px-2 py-1 text-xs rounded-full" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#16A34A' }}>Cita Agendada</span>;
     }
     if (report.posibleVenta) {
-      return <span className="px-2 py-1 text-xs rounded-full bg-navetec-secondary-2/20 text-navetec-primary">Posible Venta</span>;
+      return <span className="px-2 py-1 text-xs rounded-full" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }}>Posible Venta</span>;
     }
     if (report.soporteActivado) {
-      return <span className="px-2 py-1 text-xs rounded-full bg-navetec-primary-light/20 text-navetec-primary-light">Soporte</span>;
+      return <span className="px-2 py-1 text-xs rounded-full" style={{ background: 'rgba(249, 115, 22, 0.1)', color: '#F97316' }}>Soporte</span>;
     }
     return <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">Normal</span>;
   };
@@ -296,15 +296,27 @@ function Reports() {
   };
 
   return (
-    <div className="p-8 max-w-full overflow-auto">
-      <div className="bg-white rounded-lg shadow-sm p-6">
+    <div className="p-8 max-w-full overflow-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
+      <div className="bg-white rounded-2xl p-6" style={{
+        border: '1px solid #E8EBED',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+      }}>
         <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-light text-navetec-primary">Reporte de Conversaciones</h2>
+        <h2 className="text-2xl font-semibold text-gray-800">Reporte de Conversaciones</h2>
         <div className="flex gap-4 items-center">
           <select
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-navetec-primary"
+            className="px-4 py-2 border rounded-xl focus:outline-none transition-all text-sm"
+            style={{ borderColor: '#E8EBED' }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#5c19e3';
+              e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#E8EBED';
+              e.target.style.boxShadow = 'none';
+            }}
           >
             <option value="all">Todos los registros</option>
             <option value="month">Este mes</option>
@@ -317,36 +329,85 @@ function Reports() {
             <input
               type="date"
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-navetec-primary"
+              className="px-4 py-2 border rounded-xl focus:outline-none transition-all text-sm"
+              style={{ borderColor: '#E8EBED' }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#5c19e3';
+                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#E8EBED';
+                e.target.style.boxShadow = 'none';
+              }}
             />
           )}
           {pendingAnalysis && !analyzing && (
             <button
               onClick={() => analyzeAllConversations(true)}
-              className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-all mr-2 min-w-[180px]"
+              className="px-4 py-2 text-white rounded-xl transition-all mr-2 min-w-[180px] text-sm font-medium disabled:opacity-50"
+              style={{ background: '#F59E0B' }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#D97706';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#F59E0B';
+              }}
             >
               Reanudar Análisis ({analyzedIds.size} completados)
             </button>
           )}
           <button
             onClick={() => analyzeAllConversations(false)}
-            className="px-4 py-2 bg-navetec-primary text-white rounded-md hover:bg-navetec-primary-dark transition-all mr-2 min-w-[180px]"
+            className="px-4 py-2 text-white rounded-xl transition-all mr-2 min-w-[180px] text-sm font-medium disabled:opacity-50"
+            style={{ background: '#5c19e3' }}
+            onMouseEnter={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#4c10d4';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#5c19e3';
+              }
+            }}
             disabled={reports.length === 0 || analyzing}
           >
-            {analyzing 
-              ? `Analizando... ${analyzeProgress.current}/${analyzeProgress.total}` 
+            {analyzing
+              ? `Analizando... ${analyzeProgress.current}/${analyzeProgress.total}`
               : pendingAnalysis ? 'Nuevo Análisis' : 'Analizar con IA'}
           </button>
           <button
             onClick={reAnalyzeAll}
-            className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-all mr-2 min-w-[180px]"
+            className="px-4 py-2 text-white rounded-xl transition-all mr-2 min-w-[180px] text-sm font-medium disabled:opacity-50"
+            style={{ background: '#F97316' }}
+            onMouseEnter={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#EA580C';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#F97316';
+              }
+            }}
             disabled={reports.length === 0 || analyzing}
           >
             Volver a analizar con IA
           </button>
           <button
             onClick={exportToCSV}
-            className="px-4 py-2 bg-navetec-primary-dark text-white rounded-md hover:bg-navetec-secondary-4 transition-all"
+            className="px-4 py-2 text-white rounded-xl transition-all text-sm font-medium disabled:opacity-50"
+            style={{ background: '#6B7280' }}
+            onMouseEnter={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#4B5563';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#6B7280';
+              }
+            }}
             disabled={reports.length === 0}
           >
             Exportar CSV
@@ -355,7 +416,10 @@ function Reports() {
       </div>
 
       {/* Filtros adicionales */}
-      <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+      <div className="mb-4 p-4 rounded-xl" style={{
+        background: '#F3F4F6',
+        border: '1px solid #E8EBED'
+      }}>
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Filtros</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
@@ -365,7 +429,16 @@ function Reports() {
               placeholder="Buscar teléfono..."
               value={filters.phone}
               onChange={(e) => setFilters({...filters, phone: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-navetec-primary"
+              className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
+              style={{ borderColor: '#E8EBED' }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#5c19e3';
+                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#E8EBED';
+                e.target.style.boxShadow = 'none';
+              }}
             />
           </div>
           <div>
@@ -373,7 +446,16 @@ function Reports() {
             <select
               value={filters.status}
               onChange={(e) => setFilters({...filters, status: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-navetec-primary"
+              className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
+              style={{ borderColor: '#E8EBED' }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#5c19e3';
+                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#E8EBED';
+                e.target.style.boxShadow = 'none';
+              }}
             >
               <option value="all">Todos</option>
               <option value="ai">IA</option>
@@ -386,7 +468,16 @@ function Reports() {
             <select
               value={filters.hasSale}
               onChange={(e) => setFilters({...filters, hasSale: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-navetec-primary"
+              className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
+              style={{ borderColor: '#E8EBED' }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#5c19e3';
+                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#E8EBED';
+                e.target.style.boxShadow = 'none';
+              }}
             >
               <option value="all">Todos</option>
               <option value="yes">Con venta</option>
@@ -398,7 +489,16 @@ function Reports() {
             <select
               value={filters.hasAppointment}
               onChange={(e) => setFilters({...filters, hasAppointment: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-navetec-primary"
+              className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
+              style={{ borderColor: '#E8EBED' }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#5c19e3';
+                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#E8EBED';
+                e.target.style.boxShadow = 'none';
+              }}
             >
               <option value="all">Todos</option>
               <option value="yes">Con cita</option>
@@ -412,19 +512,25 @@ function Reports() {
       </div>
 
       {analyzing && analyzeProgress.total > 0 && (
-        <div className="mb-4 bg-navetec-secondary-2/10 rounded-lg p-4">
+        <div className="mb-4 rounded-xl p-4" style={{
+          background: 'rgba(92, 25, 227, 0.08)',
+          border: '1px solid rgba(92, 25, 227, 0.2)'
+        }}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-navetec-primary">
+            <span className="text-sm font-medium" style={{ color: '#5c19e3' }}>
               Analizando conversaciones con IA...
             </span>
-            <span className="text-sm text-navetec-primary-dark">
+            <span className="text-sm font-semibold" style={{ color: '#5c19e3' }}>
               {Math.round((analyzeProgress.current / analyzeProgress.total) * 100)}%
             </span>
           </div>
-          <div className="w-full bg-navetec-secondary-2/30 rounded-full h-2">
-            <div 
-              className="bg-navetec-primary h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(analyzeProgress.current / analyzeProgress.total) * 100}%` }}
+          <div className="w-full rounded-full h-2" style={{ background: 'rgba(92, 25, 227, 0.2)' }}>
+            <div
+              className="h-2 rounded-full transition-all duration-300"
+              style={{
+                width: `${(analyzeProgress.current / analyzeProgress.total) * 100}%`,
+                background: '#5c19e3'
+              }}
             />
           </div>
         </div>
@@ -432,7 +538,7 @@ function Reports() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-navetec-primary"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: '#5c19e3' }}></div>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -477,11 +583,13 @@ function Reports() {
                 </tr>
               ) : (
                 filteredReports.map((report) => (
-                  <tr key={report.id} className={`hover:bg-gray-50 transition-all ${report.isAnalyzing ? 'bg-navetec-secondary-2/10 animate-pulse' : ''} ${analyzedIds.has(report.id) ? 'bg-green-50' : ''}`}>
+                  <tr key={report.id} className={`hover:bg-gray-50 transition-all ${report.isAnalyzing ? 'animate-pulse' : ''} ${analyzedIds.has(report.id) ? 'bg-green-50' : ''}`}
+                    style={report.isAnalyzing ? { background: 'rgba(92, 25, 227, 0.05)' } : {}}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex items-center">
                         {report.isAnalyzing && (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-navetec-primary mr-2"></div>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 mr-2" style={{ borderColor: '#5c19e3' }}></div>
                         )}
                         {analyzedIds.has(report.id) && !report.isAnalyzing && (
                           <span className="text-green-500 mr-2" title="Analizado">✓</span>
@@ -510,7 +618,8 @@ function Reports() {
                         type="checkbox"
                         checked={report.posibleVenta}
                         onChange={(e) => handleSaleStatusChange(report, 'posibleVenta', e.target.checked)}
-                        className="h-4 w-4 text-navetec-primary focus:ring-navetec-primary border-gray-300 rounded cursor-pointer"
+                        className="h-4 w-4 border-gray-300 rounded cursor-pointer"
+                        style={{ accentColor: '#5c19e3' }}
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -518,7 +627,8 @@ function Reports() {
                         type="checkbox"
                         checked={report.ventaCerrada || report.analizadoIA || analyzedIds.has(report.id)}
                         disabled={true}
-                        className="h-4 w-4 text-navetec-primary focus:ring-navetec-primary border-gray-300 rounded"
+                        className="h-4 w-4 border-gray-300 rounded"
+                        style={{ accentColor: '#5c19e3' }}
                         title="Se marca automáticamente al analizar con IA"
                       />
                     </td>
@@ -527,7 +637,8 @@ function Reports() {
                         type="checkbox"
                         checked={report.citaAgendada || false}
                         onChange={(e) => handleSaleStatusChange(report, 'citaAgendada', e.target.checked)}
-                        className="h-4 w-4 text-navetec-primary focus:ring-navetec-primary border-gray-300 rounded cursor-pointer"
+                        className="h-4 w-4 border-gray-300 rounded cursor-pointer"
+                        style={{ accentColor: '#5c19e3' }}
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -583,33 +694,48 @@ function Reports() {
 
       {/* Resumen estadístico */}
       {reports.length > 0 && (
-        <div className="mt-6 pt-6 border-t border-gray-200">
+        <div className="mt-6 pt-6 border-t" style={{ borderColor: '#E8EBED' }}>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="bg-gray-50 rounded-lg p-4">
+            <div className="rounded-xl p-4" style={{
+              background: '#F3F4F6',
+              border: '1px solid #E8EBED'
+            }}>
               <div className="text-sm text-gray-500">Total Conversaciones</div>
-              <div className="text-2xl font-semibold text-navetec-primary-dark">{reports.length}</div>
+              <div className="text-2xl font-semibold text-gray-800">{reports.length}</div>
             </div>
-            <div className="bg-navetec-secondary-2/10 rounded-lg p-4">
-              <div className="text-sm text-navetec-primary">Posibles Ventas</div>
-              <div className="text-2xl font-semibold text-navetec-primary-dark">
+            <div className="rounded-xl p-4" style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)'
+            }}>
+              <div className="text-sm" style={{ color: '#3B82F6' }}>Posibles Ventas</div>
+              <div className="text-2xl font-semibold text-gray-800">
                 {reports.filter(r => r.posibleVenta).length}
               </div>
             </div>
-            <div className="bg-navetec-secondary-3/10 rounded-lg p-4">
-              <div className="text-sm text-navetec-secondary-3">Analizados con IA</div>
-              <div className="text-2xl font-semibold text-navetec-primary-dark">
+            <div className="rounded-xl p-4" style={{
+              background: 'rgba(92, 25, 227, 0.08)',
+              border: '1px solid rgba(92, 25, 227, 0.2)'
+            }}>
+              <div className="text-sm" style={{ color: '#5c19e3' }}>Analizados con IA</div>
+              <div className="text-2xl font-semibold text-gray-800">
                 {reports.filter(r => r.ventaCerrada || r.analizadoIA || analyzedIds.has(r.id)).length}
               </div>
             </div>
-            <div className="bg-navetec-secondary-1/10 rounded-lg p-4">
-              <div className="text-sm text-navetec-secondary-1">Citas Agendadas</div>
-              <div className="text-2xl font-semibold text-navetec-primary-dark">
+            <div className="rounded-xl p-4" style={{
+              background: 'rgba(34, 197, 94, 0.08)',
+              border: '1px solid rgba(34, 197, 94, 0.2)'
+            }}>
+              <div className="text-sm" style={{ color: '#16A34A' }}>Citas Agendadas</div>
+              <div className="text-2xl font-semibold text-gray-800">
                 {reports.filter(r => r.citaAgendada).length}
               </div>
             </div>
-            <div className="bg-navetec-primary-light/10 rounded-lg p-4">
-              <div className="text-sm text-navetec-primary-light">Con Soporte</div>
-              <div className="text-2xl font-semibold text-navetec-primary-dark">
+            <div className="rounded-xl p-4" style={{
+              background: 'rgba(249, 115, 22, 0.08)',
+              border: '1px solid rgba(249, 115, 22, 0.2)'
+            }}>
+              <div className="text-sm" style={{ color: '#F97316' }}>Con Soporte</div>
+              <div className="text-2xl font-semibold text-gray-800">
                 {reports.filter(r => r.soporteActivado).length}
               </div>
             </div>

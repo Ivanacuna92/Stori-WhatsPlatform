@@ -966,13 +966,14 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 // Formatear el número de teléfono para WhatsApp (Baileys usa @s.whatsapp.net)
                 const formattedPhone = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
                 
-                // Enviar mensaje através del cliente de WhatsApp
-                await global.whatsappBot.sock.sendMessage(formattedPhone, { text: message });
-                
+                // Enviar mensaje através del cliente de WhatsApp y capturar messageId
+                const sentMsg = await global.whatsappBot.sock.sendMessage(formattedPhone, { text: message });
+                const messageId = sentMsg?.key?.id;
+
                 // Registrar el mensaje enviado por el humano con el nombre del usuario
                 const senderName = req.user ? req.user.name : 'Soporte';
                 // Usar 'soporte' como role para la base de datos
-                await logger.log('soporte', message, phone.replace('@s.whatsapp.net', ''), senderName);
+                await logger.log('soporte', message, phone.replace('@s.whatsapp.net', ''), senderName, null, null, messageId);
                 
                 res.json({ 
                     success: true, 
@@ -1059,20 +1060,16 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 logger.log('SYSTEM', `Servidor web iniciado en puerto ${this.port}`);
             });
         } else {
-            // En desarrollo, usar ViteExpress para integrar Vite
-            const server = this.app.listen(this.port, () => {
-                console.log(`📊 Servidor web con Vite en http://localhost:${this.port}`);
-                logger.log('SYSTEM', `Servidor web con Vite iniciado en puerto ${this.port}`);
-            });
-            
-            // Configurar ViteExpress
-            ViteExpress.config({ 
+            // En desarrollo, usar ViteExpress
+            ViteExpress.config({
                 mode: 'development',
                 viteConfigFile: path.join(__dirname, '../../vite.config.js')
             });
-            
-            // Bind Vite middleware a Express
-            await ViteExpress.bind(this.app, server);
+
+            ViteExpress.listen(this.app, this.port, () => {
+                console.log(`📊 Servidor web con Vite en http://localhost:${this.port}`);
+                logger.log('SYSTEM', `Servidor web con Vite iniciado en puerto ${this.port}`);
+            });
         }
     }
 }

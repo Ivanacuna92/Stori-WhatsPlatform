@@ -47,13 +47,22 @@ function Dashboard() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto" style={{ background: '#FAFBFC', minHeight: '100vh' }}>
       <div className="flex justify-between items-center mb-8">
-        <h2 className="text-3xl font-light text-navetec-primary">Panel de Control</h2>
-        <select 
-          value={selectedDate} 
+        <h2 className="text-2xl font-semibold text-gray-800">Panel de Control</h2>
+        <select
+          value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
-          className="px-4 py-2 rounded-md border border-gray-300 bg-white text-navetec-primary focus:outline-none focus:border-navetec-primary"
+          className="px-4 py-2 rounded-xl border bg-white text-gray-700 focus:outline-none transition-all text-sm"
+          style={{ borderColor: '#E8EBED' }}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#5c19e3';
+            e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = '#E8EBED';
+            e.target.style.boxShadow = 'none';
+          }}
         >
           <option value="">Hoy</option>
           {availableDates.map(date => (
@@ -89,18 +98,28 @@ function Dashboard() {
         />
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-8">
-        <h3 className="text-xl font-light text-navetec-primary mb-6">Actividad por Hora</h3>
+      <div className="bg-white rounded-2xl p-6 mb-8" style={{
+        border: '1px solid #E8EBED',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+      }}>
+        <h3 className="text-lg font-semibold text-gray-800 mb-6">Actividad por Hora</h3>
         <div className="flex items-end h-48 gap-1">
           {Object.entries(stats?.messagesByHour || {}).map(([hour, count]) => (
             <div key={hour} className="flex-1 flex flex-col items-center">
-              <div 
-                className="w-full bg-navetec-primary hover:bg-navetec-primary-dark transition-all"
-                style={{ 
-                  height: `${(count / Math.max(...Object.values(stats?.messagesByHour || {1: 1}))) * 100}%` 
+              <div
+                className="w-full transition-all cursor-pointer rounded-t"
+                style={{
+                  height: `${(count / Math.max(...Object.values(stats?.messagesByHour || {1: 1}))) * 100}%`,
+                  background: '#5c19e3'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = '#4c10d4';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = '#5c19e3';
                 }}
               >
-                <span className="text-white text-xs font-light flex justify-center pt-1">{count}</span>
+                <span className="text-white text-xs font-medium flex justify-center pt-1">{count}</span>
               </div>
               <span className="text-xs text-gray-600 mt-1">{hour}h</span>
             </div>
@@ -128,18 +147,46 @@ function Dashboard() {
 
 function StatCard({ title, value }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6 hover:border-navetec-primary transition-all">
-      <h3 className="text-xs text-gray-600 uppercase tracking-wider mb-2">{title}</h3>
-      <p className="text-2xl font-light text-navetec-primary">{value}</p>
+    <div
+      className="bg-white rounded-xl p-6 transition-all cursor-pointer"
+      style={{
+        border: '1px solid #E8EBED',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = '#5c19e3';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(92, 25, 227, 0.15)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = '#E8EBED';
+        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.04)';
+      }}
+    >
+      <h3 className="text-xs text-gray-600 font-medium mb-2">{title}</h3>
+      <p className="text-2xl font-semibold text-gray-800">{value}</p>
     </div>
   );
 }
 
 function InsightCard({ title, value }) {
   return (
-    <div className="bg-navetec-primary rounded-lg text-white p-6">
-      <h4 className="text-xs uppercase tracking-wider mb-2 opacity-70">{title}</h4>
-      <p className="text-3xl font-light">{value}</p>
+    <div
+      className="rounded-xl text-white p-6 transition-all cursor-pointer"
+      style={{
+        background: '#5c19e3',
+        boxShadow: '0 4px 12px rgba(92, 25, 227, 0.2)'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = '#4c10d4';
+        e.currentTarget.style.boxShadow = '0 6px 16px rgba(92, 25, 227, 0.3)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = '#5c19e3';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(92, 25, 227, 0.2)';
+      }}
+    >
+      <h4 className="text-xs font-medium mb-2 opacity-80">{title}</h4>
+      <p className="text-3xl font-semibold">{value}</p>
     </div>
   );
 }
