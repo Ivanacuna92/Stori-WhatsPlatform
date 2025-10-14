@@ -5,9 +5,11 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   root: './src/web/react',
+  base: '/',
   build: {
     outDir: '../../../dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    sourcemap: false
   },
   server: {
     middlewareMode: true,
