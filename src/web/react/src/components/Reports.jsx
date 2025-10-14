@@ -12,7 +12,8 @@ function Reports() {
     phone: '',
     status: 'all',
     hasSale: 'all',
-    hasAppointment: 'all'
+    hasAppointment: 'all',
+    chatType: 'all' // all, individual, group
   });
   const [filteredReports, setFilteredReports] = useState([]);
   const [pendingAnalysis, setPendingAnalysis] = useState(null);
@@ -84,6 +85,12 @@ function Reports() {
     if (filters.hasAppointment !== 'all') {
       const hasAppointment = filters.hasAppointment === 'yes';
       filtered = filtered.filter(r => r.citaAgendada === hasAppointment);
+    }
+
+    // Filtrar por tipo de chat (individual o grupo)
+    if (filters.chatType !== 'all') {
+      const isGroup = filters.chatType === 'group';
+      filtered = filtered.filter(r => Boolean(r.isGroup) === isGroup);
     }
 
     setFilteredReports(filtered);
@@ -421,7 +428,7 @@ function Reports() {
         border: '1px solid #E8EBED'
       }}>
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Filtros</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs text-gray-600 mb-1">Teléfono</label>
             <input
@@ -503,6 +510,27 @@ function Reports() {
               <option value="all">Todos</option>
               <option value="yes">Con cita</option>
               <option value="no">Sin cita</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Tipo de Chat</label>
+            <select
+              value={filters.chatType}
+              onChange={(e) => setFilters({...filters, chatType: e.target.value})}
+              className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none transition-all"
+              style={{ borderColor: '#E8EBED' }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#5c19e3';
+                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#E8EBED';
+                e.target.style.boxShadow = 'none';
+              }}
+            >
+              <option value="all">Todos</option>
+              <option value="individual">Individual</option>
+              <option value="group">Grupo</option>
             </select>
           </div>
         </div>
@@ -602,7 +630,18 @@ function Reports() {
                       <div className="text-xs">{report.hora}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatPhone(report.telefono)}
+                      <div className="flex items-center gap-2">
+                        {report.isGroup ? (
+                          <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20" title="Grupo">
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20" title="Individual">
+                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/>
+                          </svg>
+                        )}
+                        <span>{formatPhone(report.telefono)}</span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex items-center">

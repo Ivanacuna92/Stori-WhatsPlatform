@@ -9,6 +9,8 @@ const salesManager = require('../services/salesManager');
 const conversationAnalyzer = require('../services/conversationAnalyzer');
 const authService = require('../services/authService');
 const csvService = require('../services/csvService');
+const systemConfigService = require('../services/systemConfigService');
+const promptLoader = require('../services/promptLoader');
 const { requireAuth, requireAdmin, requireSupportOrAdmin } = require('../middleware/auth');
 const ViteExpress = require('vite-express');
 
@@ -622,10 +624,10 @@ class WebServer {
                 
                 logs.forEach(log => {
                     if (!log.userId) return;
-                    
+
                     // Obtener fecha del log
                     const logDate = new Date(log.timestamp).toISOString().split('T')[0];
-                    
+
                     if (!conversationsByUser[log.userId]) {
                         conversationsByUser[log.userId] = {
                             id: '',
@@ -638,6 +640,7 @@ class WebServer {
                             citaAgendada: false,
                             soporteActivado: false,
                             modoHumano: false,
+                            isGroup: Boolean(log.isGroup),
                             conversacion: [],
                             primerMensaje: null,
                             ultimoMensaje: null
@@ -885,53 +888,164 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
         this.app.post('/api/end-conversation', async (req, res) => {
             try {
                 const { phone } = req.body;
-                
+
                 if (!phone) {
-                    return res.status(400).json({ 
+                    return res.status(400).json({
                         error: 'Phone is required',
                         details: 'Debe proporcionar el teléfono'
                     });
                 }
-                
+
                 // Verificar si hay una instancia activa del bot
                 if (!global.whatsappBot || !global.whatsappBot.sock) {
-                    return res.status(503).json({ 
+                    return res.status(503).json({
                         error: 'WhatsApp bot not available',
                         details: 'El bot de WhatsApp no está conectado'
                     });
                 }
-                
-                // Formatear el número de teléfono para WhatsApp (Baileys usa @s.whatsapp.net)
-                const formattedPhone = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
-                
+
+                // Formatear el número de teléfono para WhatsApp
+                let formattedPhone = phone;
+                if (!phone.includes('@')) {
+                    formattedPhone = `${phone}@s.whatsapp.net`;
+                }
+
                 // Enviar mensaje de finalización
                 const endMessage = '⏰ Tu sesión de conversación ha finalizado. Puedes escribirme nuevamente para iniciar una nueva conversación.';
                 await global.whatsappBot.sock.sendMessage(formattedPhone, { text: endMessage });
-                
+
                 // Registrar el mensaje de finalización en los logs como mensaje del BOT
-                logger.log('BOT', endMessage, phone);
-                
+                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                const isGroup = phone.includes('@g.us') || formattedPhone.includes('@g.us');
+                logger.log('BOT', endMessage, cleanPhone, null, isGroup);
+
                 // Limpiar la sesión
                 const sessionManager = require('../services/sessionManager');
                 sessionManager.clearSession(phone);
-                
+
                 // Cambiar a modo IA si estaba en modo humano
                 humanModeManager.setMode(phone, false);
-                
+
                 // Registrar el evento
                 logger.log('SYSTEM', `Conversación finalizada manualmente para ${phone}`, phone);
-                
-                res.json({ 
-                    success: true, 
+
+                res.json({
+                    success: true,
                     message: 'Conversación finalizada correctamente',
                     phone: phone
                 });
-                
+
             } catch (error) {
                 console.error('Error finalizando conversación:', error);
-                res.status(500).json({ 
+                res.status(500).json({
                     error: 'Error al finalizar conversación',
-                    details: error.message 
+                    details: error.message
+                });
+            }
+        });
+
+        // API endpoint para eliminar conversación (elimina los mensajes de los logs)
+        this.app.post('/api/delete-conversation', async (req, res) => {
+            try {
+                const { phone } = req.body;
+
+                if (!phone) {
+                    return res.status(400).json({
+                        error: 'Phone is required',
+                        details: 'Debe proporcionar el teléfono'
+                    });
+                }
+
+                // Limpiar el número de teléfono
+                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+
+                // Eliminar mensajes de los logs
+                await logger.deleteConversation(cleanPhone);
+
+                // Limpiar la sesión si existe
+                const sessionManager = require('../services/sessionManager');
+                sessionManager.clearSession(phone);
+
+                // Cambiar a modo IA si estaba en modo humano
+                humanModeManager.setMode(phone, false);
+
+                // Registrar el evento
+                logger.log('SYSTEM', `Conversación eliminada para ${cleanPhone}`, cleanPhone);
+
+                res.json({
+                    success: true,
+                    message: 'Conversación eliminada correctamente',
+                    phone: phone
+                });
+
+            } catch (error) {
+                console.error('Error eliminando conversación:', error);
+                res.status(500).json({
+                    error: 'Error al eliminar conversación',
+                    details: error.message
+                });
+            }
+        });
+
+        // API endpoint para salir de un grupo
+        this.app.post('/api/leave-group', async (req, res) => {
+            try {
+                const { phone } = req.body;
+
+                if (!phone) {
+                    return res.status(400).json({
+                        error: 'Phone is required',
+                        details: 'Debe proporcionar el ID del grupo'
+                    });
+                }
+
+                // Verificar si hay una instancia activa del bot
+                if (!global.whatsappBot || !global.whatsappBot.sock) {
+                    return res.status(503).json({
+                        error: 'WhatsApp bot not available',
+                        details: 'El bot de WhatsApp no está conectado'
+                    });
+                }
+
+                // Formatear el ID del grupo para WhatsApp
+                let groupId = phone;
+                if (!phone.includes('@')) {
+                    groupId = `${phone}@g.us`;
+                }
+
+                // Verificar que sea un grupo
+                if (!groupId.endsWith('@g.us')) {
+                    return res.status(400).json({
+                        error: 'Invalid group ID',
+                        details: 'El ID proporcionado no es un grupo de WhatsApp'
+                    });
+                }
+
+                // Salir del grupo usando Baileys
+                await global.whatsappBot.sock.groupLeave(groupId);
+
+                // Registrar el evento
+                const cleanPhone = phone.replace('@g.us', '');
+                logger.log('SYSTEM', `Bot salió del grupo ${cleanPhone}`, cleanPhone);
+
+                // Limpiar la sesión del grupo
+                const sessionManager = require('../services/sessionManager');
+                sessionManager.clearSession(phone);
+
+                // Eliminar de modo humano si existe
+                humanModeManager.removeContact(phone);
+
+                res.json({
+                    success: true,
+                    message: 'Bot salió del grupo correctamente',
+                    groupId: phone
+                });
+
+            } catch (error) {
+                console.error('Error saliendo del grupo:', error);
+                res.status(500).json({
+                    error: 'Error al salir del grupo',
+                    details: error.message
                 });
             }
         });
@@ -963,17 +1077,24 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                     });
                 }
                 
-                // Formatear el número de teléfono para WhatsApp (Baileys usa @s.whatsapp.net)
-                const formattedPhone = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
-                
+                // Formatear el número de teléfono para WhatsApp
+                // Si ya tiene @, usar como está. Si no, determinar si es grupo o chat privado
+                let formattedPhone = phone;
+                if (!phone.includes('@')) {
+                    // Por defecto asumir chat privado, pero esto debería venir del frontend
+                    formattedPhone = `${phone}@s.whatsapp.net`;
+                }
+
                 // Enviar mensaje através del cliente de WhatsApp y capturar messageId
                 const sentMsg = await global.whatsappBot.sock.sendMessage(formattedPhone, { text: message });
                 const messageId = sentMsg?.key?.id;
 
                 // Registrar el mensaje enviado por el humano con el nombre del usuario
                 const senderName = req.user ? req.user.name : 'Soporte';
+                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                const isGroup = phone.includes('@g.us') || formattedPhone.includes('@g.us');
                 // Usar 'soporte' como role para la base de datos
-                await logger.log('soporte', message, phone.replace('@s.whatsapp.net', ''), senderName, null, null, messageId);
+                await logger.log('soporte', message, cleanPhone, senderName, isGroup, null, null, messageId);
                 
                 res.json({ 
                     success: true, 
@@ -1001,6 +1122,178 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 });
             }
         });
+
+        // ===== ENDPOINTS DE CONFIGURACIÓN DEL SISTEMA =====
+
+        // Obtener todas las configuraciones
+        this.app.get('/api/system-config', requireAuth, async (req, res) => {
+            try {
+                const configs = await systemConfigService.getAllConfigs();
+                res.json(configs);
+            } catch (error) {
+                console.error('Error obteniendo configuraciones:', error);
+                res.status(500).json({ error: 'Error obteniendo configuraciones' });
+            }
+        });
+
+        // Obtener una configuración específica
+        this.app.get('/api/system-config/:key', requireAuth, async (req, res) => {
+            try {
+                const { key } = req.params;
+                const value = await systemConfigService.getConfig(key);
+                res.json({ key, value });
+            } catch (error) {
+                console.error(`Error obteniendo configuración ${req.params.key}:`, error);
+                res.status(500).json({ error: 'Error obteniendo configuración' });
+            }
+        });
+
+        // Actualizar una configuración (solo admin)
+        this.app.put('/api/system-config/:key', requireAdmin, async (req, res) => {
+            try {
+                const { key } = req.params;
+                const { value } = req.body;
+
+                if (value === undefined) {
+                    return res.status(400).json({ error: 'Value is required' });
+                }
+
+                const success = await systemConfigService.setConfig(key, value);
+
+                if (success) {
+                    res.json({ success: true, key, value });
+                } else {
+                    res.status(500).json({ error: 'Error actualizando configuración' });
+                }
+            } catch (error) {
+                console.error(`Error actualizando configuración ${req.params.key}:`, error);
+                res.status(500).json({ error: 'Error actualizando configuración' });
+            }
+        });
+
+        // Endpoint específico para toggle de IA en grupos
+        this.app.post('/api/system-config/groups-ai-toggle', requireAdmin, async (req, res) => {
+            try {
+                const { enabled } = req.body;
+
+                if (typeof enabled !== 'boolean') {
+                    return res.status(400).json({ error: 'enabled debe ser un booleano' });
+                }
+
+                const success = await systemConfigService.setGroupsAIEnabled(enabled);
+
+                if (success) {
+                    logger.log('SYSTEM', `IA en grupos ${enabled ? 'activada' : 'desactivada'}`);
+                    res.json({
+                        success: true,
+                        enabled,
+                        message: `IA en grupos ${enabled ? 'activada' : 'desactivada'} correctamente`
+                    });
+                } else {
+                    res.status(500).json({ error: 'Error actualizando configuración' });
+                }
+            } catch (error) {
+                console.error('Error en toggle de IA en grupos:', error);
+                res.status(500).json({ error: 'Error actualizando configuración' });
+            }
+        });
+
+        // Endpoint específico para toggle de IA individual
+        this.app.post('/api/system-config/individual-ai-toggle', requireAdmin, async (req, res) => {
+            try {
+                const { enabled } = req.body;
+
+                if (typeof enabled !== 'boolean') {
+                    return res.status(400).json({ error: 'enabled debe ser un booleano' });
+                }
+
+                const success = await systemConfigService.setIndividualAIEnabled(enabled);
+
+                if (success) {
+                    logger.log('SYSTEM', `IA individual ${enabled ? 'activada' : 'desactivada'}`);
+                    res.json({
+                        success: true,
+                        enabled,
+                        message: `IA individual ${enabled ? 'activada' : 'desactivada'} correctamente`
+                    });
+                } else {
+                    res.status(500).json({ error: 'Error actualizando configuración' });
+                }
+            } catch (error) {
+                console.error('Error en toggle de IA individual:', error);
+                res.status(500).json({ error: 'Error actualizando configuración' });
+            }
+        });
+
+        // ===== ENDPOINTS DE GESTIÓN DE PROMPTS =====
+
+        // Obtener ambos prompts
+        this.app.get('/api/prompts', requireAuth, async (req, res) => {
+            try {
+                const individualPrompt = promptLoader.load();
+                const groupPrompt = promptLoader.loadGroupPrompt();
+
+                res.json({
+                    individual: individualPrompt,
+                    group: groupPrompt
+                });
+            } catch (error) {
+                console.error('Error obteniendo prompts:', error);
+                res.status(500).json({ error: 'Error obteniendo prompts' });
+            }
+        });
+
+        // Actualizar prompt individual (solo admin)
+        this.app.put('/api/prompts/individual', requireAdmin, async (req, res) => {
+            try {
+                const { prompt } = req.body;
+
+                if (!prompt || typeof prompt !== 'string') {
+                    return res.status(400).json({ error: 'Prompt es requerido y debe ser un string' });
+                }
+
+                const success = promptLoader.update(prompt);
+
+                if (success) {
+                    logger.log('SYSTEM', 'Prompt individual actualizado');
+                    res.json({
+                        success: true,
+                        message: 'Prompt individual actualizado correctamente'
+                    });
+                } else {
+                    res.status(500).json({ error: 'Error actualizando prompt' });
+                }
+            } catch (error) {
+                console.error('Error actualizando prompt individual:', error);
+                res.status(500).json({ error: 'Error actualizando prompt' });
+            }
+        });
+
+        // Actualizar prompt de grupos (solo admin)
+        this.app.put('/api/prompts/group', requireAdmin, async (req, res) => {
+            try {
+                const { prompt } = req.body;
+
+                if (!prompt || typeof prompt !== 'string') {
+                    return res.status(400).json({ error: 'Prompt es requerido y debe ser un string' });
+                }
+
+                const success = promptLoader.updateGroupPrompt(prompt);
+
+                if (success) {
+                    logger.log('SYSTEM', 'Prompt de grupos actualizado');
+                    res.json({
+                        success: true,
+                        message: 'Prompt de grupos actualizado correctamente'
+                    });
+                } else {
+                    res.status(500).json({ error: 'Error actualizando prompt' });
+                }
+            } catch (error) {
+                console.error('Error actualizando prompt de grupos:', error);
+                res.status(500).json({ error: 'Error actualizando prompt' });
+            }
+        });
     }
 
     calculateStats(logs) {
@@ -1010,6 +1303,8 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             botMessages: 0,
             errors: 0,
             uniqueUsers: new Set(),
+            uniqueIndividuals: new Set(),
+            uniqueGroups: new Set(),
             messagesByHour: {},
             averageResponseLength: 0
         };
@@ -1022,7 +1317,9 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             console.warn('calculateStats: logs no es un array', typeof logs);
             return {
                 ...stats,
-                uniqueUsers: stats.uniqueUsers.size
+                uniqueUsers: stats.uniqueUsers.size,
+                uniqueIndividuals: stats.uniqueIndividuals.size,
+                uniqueGroups: stats.uniqueGroups.size
             };
         }
 
@@ -1030,7 +1327,15 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             if (log.type === 'USER') {
                 stats.userMessages++;
                 stats.totalMessages++;
-                if (log.userId) stats.uniqueUsers.add(log.userId);
+                if (log.userId) {
+                    stats.uniqueUsers.add(log.userId);
+                    // Separar por tipo de chat
+                    if (log.isGroup) {
+                        stats.uniqueGroups.add(log.userId);
+                    } else {
+                        stats.uniqueIndividuals.add(log.userId);
+                    }
+                }
             } else if (log.type === 'BOT') {
                 stats.botMessages++;
                 stats.totalMessages++;
@@ -1046,7 +1351,9 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
         });
 
         stats.uniqueUsers = stats.uniqueUsers.size;
-        stats.averageResponseLength = responseCount > 0 ? 
+        stats.uniqueIndividuals = stats.uniqueIndividuals.size;
+        stats.uniqueGroups = stats.uniqueGroups.size;
+        stats.averageResponseLength = responseCount > 0 ?
             Math.round(totalResponseLength / responseCount) : 0;
 
         return stats;

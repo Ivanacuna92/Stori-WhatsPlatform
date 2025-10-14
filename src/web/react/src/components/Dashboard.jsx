@@ -77,8 +77,14 @@ function Dashboard() {
           value={stats?.totalMessages || 0}
         />
         <StatCard
-          title="Usuarios Únicos"
-          value={stats?.uniqueUsers || 0}
+          title="Chats Individuales"
+          value={stats?.uniqueIndividuals || 0}
+          subtitle="contactos"
+        />
+        <StatCard
+          title="Grupos"
+          value={stats?.uniqueGroups || 0}
+          subtitle="grupos"
         />
         <StatCard
           title="Recibidos"
@@ -87,10 +93,6 @@ function Dashboard() {
         <StatCard
           title="Respuestas Bot"
           value={stats?.botMessages || 0}
-        />
-        <StatCard
-          title="Errores"
-          value={stats?.errors || 0}
         />
         <StatCard
           title="Promedio"
@@ -145,7 +147,7 @@ function Dashboard() {
   );
 }
 
-function StatCard({ title, value }) {
+function StatCard({ title, value, subtitle }) {
   return (
     <div
       className="bg-white rounded-xl p-6 transition-all cursor-pointer"
@@ -163,7 +165,10 @@ function StatCard({ title, value }) {
       }}
     >
       <h3 className="text-xs text-gray-600 font-medium mb-2">{title}</h3>
-      <p className="text-2xl font-semibold text-gray-800">{value}</p>
+      <div className="flex items-baseline gap-2">
+        <p className="text-2xl font-semibold text-gray-800">{value}</p>
+        {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
+      </div>
     </div>
   );
 }

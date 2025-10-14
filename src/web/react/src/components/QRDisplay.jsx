@@ -4,9 +4,38 @@ function QRDisplay() {
   const [qrData, setQrData] = useState(null);
   const [status, setStatus] = useState('loading');
   const [isResetting, setIsResetting] = useState(false);
+
+  // Estados actuales de los toggles (editables)
+  const [groupsAIEnabled, setGroupsAIEnabled] = useState(true);
+  const [individualAIEnabled, setIndividualAIEnabled] = useState(true);
+
+  // Estados originales de los toggles (guardados)
+  const [originalGroupsAIEnabled, setOriginalGroupsAIEnabled] = useState(true);
+  const [originalIndividualAIEnabled, setOriginalIndividualAIEnabled] = useState(true);
+
+  const [loadingGroupsAI, setLoadingGroupsAI] = useState(true);
+  const [loadingIndividualAI, setLoadingIndividualAI] = useState(true);
+  const [savingAll, setSavingAll] = useState(false);
+
   const qrCanvasRef = useRef(null);
   const intervalRef = useRef(null);
   const qrcodeRef = useRef(null);
+
+  // Estados para el editor de prompts
+  const [prompts, setPrompts] = useState({
+    individual: '',
+    group: ''
+  });
+  const [originalPrompts, setOriginalPrompts] = useState({
+    individual: '',
+    group: ''
+  });
+  const [loadingPrompts, setLoadingPrompts] = useState(true);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [activePromptTab, setActivePromptTab] = useState('individual');
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState('success');
 
   useEffect(() => {
     // Cargar librería QRCode si no está disponible
@@ -30,6 +59,171 @@ function QRDisplay() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    loadGroupsAIConfig();
+    loadIndividualAIConfig();
+    loadPrompts();
+  }, []);
+
+  const loadGroupsAIConfig = async () => {
+    try {
+      const response = await fetch('/api/system-config/groups_ai_enabled', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      const value = data.value === 'true';
+      setGroupsAIEnabled(value);
+      setOriginalGroupsAIEnabled(value);
+    } catch (error) {
+      console.error('Error loading groups AI config:', error);
+    } finally {
+      setLoadingGroupsAI(false);
+    }
+  };
+
+  const loadIndividualAIConfig = async () => {
+    try {
+      const response = await fetch('/api/system-config/individual_ai_enabled', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      const value = data.value === 'true';
+      setIndividualAIEnabled(value);
+      setOriginalIndividualAIEnabled(value);
+    } catch (error) {
+      console.error('Error loading individual AI config:', error);
+    } finally {
+      setLoadingIndividualAI(false);
+    }
+  };
+
+  const loadPrompts = async () => {
+    try {
+      const response = await fetch('/api/prompts', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      setPrompts({
+        individual: data.individual,
+        group: data.group
+      });
+      setOriginalPrompts({
+        individual: data.individual,
+        group: data.group
+      });
+    } catch (error) {
+      console.error('Error loading prompts:', error);
+      showToastMessage('Error cargando prompts', 'error');
+    } finally {
+      setLoadingPrompts(false);
+    }
+  };
+
+  const handleSavePrompt = async (type) => {
+    setSavingPrompt(true);
+    try {
+      const endpoint = type === 'individual' ? '/api/prompts/individual' : '/api/prompts/group';
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ prompt: prompts[type] })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setOriginalPrompts(prev => ({
+          ...prev,
+          [type]: prompts[type]
+        }));
+        showToastMessage(data.message || 'Prompt guardado correctamente', 'success');
+      } else {
+        showToastMessage(data.error || 'Error guardando prompt', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving prompt:', error);
+      showToastMessage('Error guardando prompt', 'error');
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
+  const handleCancelPrompt = (type) => {
+    setPrompts(prev => ({
+      ...prev,
+      [type]: originalPrompts[type]
+    }));
+  };
+
+  const handleSaveAll = async () => {
+    setSavingAll(true);
+
+    try {
+      // Guardar solo el prompt del tab activo
+      const promptEndpoint = activePromptTab === 'individual' ? '/api/prompts/individual' : '/api/prompts/group';
+      const promptResponse = await fetch(promptEndpoint, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ prompt: prompts[activePromptTab] })
+      });
+
+      const promptData = await promptResponse.json();
+      if (!promptResponse.ok || !promptData.success) {
+        showToastMessage('Error guardando prompt', 'error');
+      } else {
+        setOriginalPrompts(prev => ({
+          ...prev,
+          [activePromptTab]: prompts[activePromptTab]
+        }));
+        showToastMessage('Prompt guardado correctamente', 'success');
+      }
+    } catch (error) {
+      console.error('Error saving prompt:', error);
+      showToastMessage('Error guardando prompt', 'error');
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
+  const showToastMessage = (message, type = 'success') => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
+  const hasIndividualChanges = prompts.individual !== originalPrompts.individual;
+  const hasGroupChanges = prompts.group !== originalPrompts.group;
+  const hasAnyChanges = hasIndividualChanges || hasGroupChanges;
+
+  const handleDownloadPrompt = (type) => {
+    const promptText = originalPrompts[type]; // Usar el original guardado, no el editado
+    const fileName = type === 'individual' ? 'prompt-individual.txt' : 'prompt-grupos.txt';
+
+    // Crear blob con el contenido
+    const blob = new Blob([promptText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+
+    // Crear link temporal para descargar
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+
+    // Limpiar
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showToastMessage(`Backup descargado: ${fileName}`, 'success');
+  };
 
   const checkQR = async () => {
     try {
@@ -94,21 +288,83 @@ function QRDisplay() {
     }
   };
 
+  const handleToggleGroupsAI = async () => {
+    const newValue = !groupsAIEnabled;
+    setGroupsAIEnabled(newValue);
+
+    try {
+      const response = await fetch('/api/system-config/groups-ai-toggle', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ enabled: newValue })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setOriginalGroupsAIEnabled(newValue);
+        showToastMessage(newValue ? 'IA en Grupos activada' : 'IA en Grupos desactivada', 'success');
+      } else {
+        // Revertir el cambio si falla
+        setGroupsAIEnabled(!newValue);
+        showToastMessage('Error actualizando configuración de IA en Grupos', 'error');
+      }
+    } catch (error) {
+      console.error('Error toggling groups AI:', error);
+      setGroupsAIEnabled(!newValue);
+      showToastMessage('Error actualizando configuración de IA en Grupos', 'error');
+    }
+  };
+
+  const handleToggleIndividualAI = async () => {
+    const newValue = !individualAIEnabled;
+    setIndividualAIEnabled(newValue);
+
+    try {
+      const response = await fetch('/api/system-config/individual-ai-toggle', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ enabled: newValue })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setOriginalIndividualAIEnabled(newValue);
+        showToastMessage(newValue ? 'IA Individual activada' : 'IA Individual desactivada', 'success');
+      } else {
+        // Revertir el cambio si falla
+        setIndividualAIEnabled(!newValue);
+        showToastMessage('Error actualizando configuración de IA Individual', 'error');
+      }
+    } catch (error) {
+      console.error('Error toggling individual AI:', error);
+      setIndividualAIEnabled(!newValue);
+      showToastMessage('Error actualizando configuración de IA Individual', 'error');
+    }
+  };
+
   return (
-    <div className="flex-1 flex items-center justify-center p-8" style={{ background: '#FAFBFC' }}>
-      <div className="bg-white rounded-2xl p-8 max-w-lg w-full" style={{
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
-        border: '1px solid #E8EBED'
-      }}>
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-gray-800 mb-2">
-            Sesión de WhatsApp
-          </h1>
-          <p className="text-sm text-gray-500">
-            Escanea el código QR para vincular tu dispositivo
-          </p>
-        </div>
+    <div className="flex-1 flex gap-6 p-8 overflow-auto" style={{ background: '#FAFBFC' }}>
+      {/* Columna 1: Sesión de WhatsApp */}
+      <div className="flex-1 flex flex-col">
+        <div className="bg-white rounded-2xl p-8 h-full" style={{
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+          border: '1px solid #E8EBED'
+        }}>
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-gray-800 mb-2">
+              Sesión de WhatsApp
+            </h1>
+            <p className="text-sm text-gray-500">
+              Escanea el código QR para vincular tu dispositivo
+            </p>
+          </div>
 
         {/* QR Area */}
         <div className="rounded-xl p-8 flex items-center justify-center min-h-[320px]" style={{
@@ -243,32 +499,280 @@ function QRDisplay() {
           </button>
         </div>
 
-        {/* Instructions */}
-        <div className="mt-6 pt-6 rounded-xl p-4" style={{
-          background: '#FAFBFC',
-          border: '1px solid #E8EBED'
-        }}>
-          <p className="text-xs font-semibold text-gray-700 mb-3">Cómo vincular:</p>
-          <ol className="space-y-2 text-xs text-gray-600">
-            <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>1</span>
-              <span>Abre WhatsApp en tu teléfono</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>2</span>
-              <span>Ve a Configuración → Dispositivos vinculados</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>3</span>
-              <span>Toca "Vincular dispositivo"</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>4</span>
-              <span>Escanea el código QR mostrado arriba</span>
-            </li>
-          </ol>
+          {/* Instructions */}
+          <div className="mt-6 pt-6 rounded-xl p-4" style={{
+            background: '#FAFBFC',
+            border: '1px solid #E8EBED'
+          }}>
+            <p className="text-xs font-semibold text-gray-700 mb-3">Cómo vincular:</p>
+            <ol className="space-y-2 text-xs text-gray-600">
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>1</span>
+                <span>Abre WhatsApp en tu teléfono</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>2</span>
+                <span>Ve a Configuración → Dispositivos vinculados</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>3</span>
+                <span>Toca "Vincular dispositivo"</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: '#5c19e3' }}>4</span>
+                <span>Escanea el código QR mostrado arriba</span>
+              </li>
+            </ol>
+          </div>
         </div>
       </div>
+
+      {/* Columna 2: Configuración de Prompts */}
+      <div className="flex-1 flex flex-col">
+        <div className="bg-white rounded-2xl p-8 h-full flex flex-col" style={{
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+          border: '1px solid #E8EBED'
+        }}>
+          {/* Header with Toggle */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-800 mb-2">
+                  Configuración de IA
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Personaliza el comportamiento de la IA
+                </p>
+              </div>
+              {/* Conditional AI Toggle based on active tab */}
+              {activePromptTab === 'group' ? (
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-gray-700">IA en Grupos</p>
+                    <p className="text-[10px] text-gray-400">
+                      {groupsAIEnabled ? 'Activada' : 'Desactivada'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleToggleGroupsAI}
+                    disabled={loadingGroupsAI}
+                    className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: groupsAIEnabled ? '#5c19e3' : '#E8EBED'
+                    }}
+                  >
+                    <span
+                      className="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      style={{
+                        transform: groupsAIEnabled ? 'translateX(20px)' : 'translateX(0)'
+                      }}
+                    />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-gray-700">IA Individual</p>
+                    <p className="text-[10px] text-gray-400">
+                      {individualAIEnabled ? 'Activada' : 'Desactivada'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleToggleIndividualAI}
+                    disabled={loadingIndividualAI}
+                    className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: individualAIEnabled ? '#5c19e3' : '#E8EBED'
+                    }}
+                  >
+                    <span
+                      className="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      style={{
+                        transform: individualAIEnabled ? 'translateX(20px)' : 'translateX(0)'
+                      }}
+                    />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Download Backup Button */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => handleDownloadPrompt(activePromptTab)}
+                disabled={loadingPrompts}
+                className="px-4 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                style={{
+                  background: '#F3F4F6',
+                  color: '#374151'
+                }}
+                onMouseEnter={(e) => !loadingPrompts && (e.target.style.background = '#E5E7EB')}
+                onMouseLeave={(e) => !loadingPrompts && (e.target.style.background = '#F3F4F6')}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Descargar Backup</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-2 mb-6 border-b" style={{ borderColor: '#E8EBED' }}>
+            <button
+              onClick={() => setActivePromptTab('individual')}
+              className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+                activePromptTab === 'individual' ? 'text-gray-800' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Chats Individuales
+              {hasIndividualChanges && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-orange-500"></span>
+              )}
+              {activePromptTab === 'individual' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ background: '#5c19e3' }}></div>
+              )}
+            </button>
+            <button
+              onClick={() => setActivePromptTab('group')}
+              className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+                activePromptTab === 'group' ? 'text-gray-800' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Grupos
+              {hasGroupChanges && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-orange-500"></span>
+              )}
+              {activePromptTab === 'group' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ background: '#5c19e3' }}></div>
+              )}
+            </button>
+          </div>
+
+          {loadingPrompts ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-purple-600"></div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col">
+              {/* Editor */}
+              <div className="flex-1 mb-4">
+                <textarea
+                  value={prompts[activePromptTab]}
+                  onChange={(e) => setPrompts(prev => ({
+                    ...prev,
+                    [activePromptTab]: e.target.value
+                  }))}
+                  className="w-full h-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent font-mono resize-none"
+                  style={{
+                    borderColor: '#E8EBED',
+                    background: '#FAFBFC',
+                    minHeight: '400px'
+                  }}
+                  placeholder={`Escribe el prompt del sistema para ${activePromptTab === 'individual' ? 'chats individuales' : 'grupos'}...`}
+                />
+              </div>
+
+              {/* Actions */}
+              {(hasIndividualChanges && activePromptTab === 'individual') || (hasGroupChanges && activePromptTab === 'group') ? (
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleSaveAll}
+                    disabled={savingAll}
+                    className="flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    style={{
+                      background: '#5c19e3',
+                      color: 'white'
+                    }}
+                    onMouseEnter={(e) => !savingAll && (e.target.style.background = '#4c10d4')}
+                    onMouseLeave={(e) => !savingAll && (e.target.style.background = '#5c19e3')}
+                  >
+                    {savingAll ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        <span>Guardando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Guardar Prompt</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleCancelPrompt(activePromptTab)}
+                    disabled={savingAll}
+                    className="px-6 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: '#E8EBED',
+                      color: '#6B7280'
+                    }}
+                    onMouseEnter={(e) => !savingAll && (e.target.style.background = '#D1D5DB')}
+                    onMouseLeave={(e) => !savingAll && (e.target.style.background = '#E8EBED')}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-xl px-4 py-3 text-sm" style={{
+                  background: 'rgba(34, 197, 94, 0.08)',
+                  border: '1px solid rgba(34, 197, 94, 0.2)',
+                  color: '#166534'
+                }}>
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <span>Todos los cambios guardados</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div
+          className="fixed bottom-8 right-8 px-6 py-4 rounded-xl shadow-lg flex items-center gap-3 animate-slide-up"
+          style={{
+            background: toastType === 'success' ? 'rgba(34, 197, 94, 0.95)' : 'rgba(239, 68, 68, 0.95)',
+            color: 'white',
+            maxWidth: '400px',
+            zIndex: 9999
+          }}
+        >
+          {toastType === 'success' ? (
+            <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+          )}
+          <p className="text-sm font-medium">{toastMessage}</p>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slide-up {
+          from {
+            transform: translateY(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }

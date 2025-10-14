@@ -9,11 +9,11 @@ const sessionManager = require('../services/sessionManager');
 const promptLoader = require('../services/promptLoader');
 const humanModeManager = require('../services/humanModeManager');
 const followUpService = require('../services/followUpService');
+const systemConfigService = require('../services/systemConfigService');
 
 class WhatsAppBot {
     constructor() {
         this.sock = null;
-        this.systemPrompt = promptLoader.getPrompt();
         this.currentQR = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 3;
@@ -43,10 +43,7 @@ class WhatsAppBot {
             // Crear socket de WhatsApp con configuración mejorada para producción
             this.sock = makeWASocket({
                 version,
-                auth: {
-                    creds: state.creds,
-                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-                },
+                auth: state,
                 printQRInTerminal: false,
                 logger: pino({ level: 'silent' }),
                 browser: ['Chrome (Linux)', '', ''],
@@ -60,10 +57,9 @@ class WhatsAppBot {
                 keepAliveIntervalMs: 30000,
                 qrTimeout: undefined,
                 markOnlineOnConnect: false,
-                msgRetryCounterCache: {},
+                msgRetryCounterCache: new Map(),
                 retryRequestDelayMs: 250,
-                maxMsgRetryCount: 5,
-                auth: state
+                maxMsgRetryCount: 5
             });
             
         
@@ -190,9 +186,6 @@ class WhatsAppBot {
                 const from = msg.key.remoteJid;
                 const isGroup = from.endsWith('@g.us');
                 
-                // Solo responder a mensajes privados
-                if (isGroup) return;
-                
                 // Obtener el texto del mensaje
                 const conversation = msg.message.conversation || 
                                    msg.message.extendedTextMessage?.text || 
@@ -204,11 +197,34 @@ class WhatsAppBot {
                     return;
                 }
                 
-                // Extraer información del usuario
-                const userId = from.replace('@s.whatsapp.net', '');
-                const userName = msg.pushName || userId;
-                
-                await logger.log('cliente', conversation, userId, userName);
+                // Extraer información del usuario o grupo
+                let userId, userName, groupName;
+
+                if (isGroup) {
+                    // Para grupos: usar el ID del grupo como userId
+                    userId = from.replace('@g.us', '');
+                    groupName = 'Grupo'; // Nombre por defecto, se puede mejorar obteniendo metadata
+                    userName = msg.pushName || 'Participante';
+
+                    // Obtener metadata del grupo para nombre real
+                    try {
+                        const groupMetadata = await this.sock.groupMetadata(from);
+                        groupName = groupMetadata.subject || 'Grupo sin nombre';
+                    } catch (error) {
+                        console.log('No se pudo obtener metadata del grupo:', error.message);
+                    }
+
+                    await logger.log('cliente', conversation, userId, groupName, isGroup);
+
+                    // Los grupos ahora funcionan igual que los chats privados
+                    // No se activa soporte automáticamente, el usuario decide si usar IA o modo manual
+                } else {
+                    // Para chats privados
+                    userId = from.replace('@s.whatsapp.net', '');
+                    userName = msg.pushName || userId;
+
+                    await logger.log('cliente', conversation, userId, userName, isGroup);
+                }
 
                 // Verificar si está en modo humano o soporte
                 const isHuman = await humanModeManager.isHumanMode(userId);
@@ -218,6 +234,22 @@ class WhatsAppBot {
                     const mode = isSupport ? 'SOPORTE' : 'HUMANO';
                     await logger.log('SYSTEM', `Mensaje ignorado - Modo ${mode} activo para ${userName} (${userId})`);
                     return;
+                }
+
+                // Verificar si la IA está desactivada para grupos
+                if (isGroup) {
+                    const groupsAIEnabled = await systemConfigService.isGroupsAIEnabled();
+                    if (!groupsAIEnabled) {
+                        await logger.log('SYSTEM', `Mensaje de grupo ignorado - IA en grupos desactivada (${groupName})`);
+                        return;
+                    }
+                } else {
+                    // Verificar si la IA está desactivada para chats individuales
+                    const individualAIEnabled = await systemConfigService.isIndividualAIEnabled();
+                    if (!individualAIEnabled) {
+                        await logger.log('SYSTEM', `Mensaje individual ignorado - IA individual desactivada (${userName})`);
+                        return;
+                    }
                 }
 
                 // Si hay seguimiento activo, cancelarlo (el cliente respondió)
@@ -239,7 +271,8 @@ class WhatsAppBot {
                 // Enviar respuesta y capturar messageId
                 const sentMsg = await this.sock.sendMessage(from, { text: response });
                 const messageId = sentMsg?.key?.id;
-                await logger.log('bot', response, userId, userName, null, null, messageId);
+                const displayName = isGroup ? groupName : userName;
+                await logger.log('bot', response, userId, displayName, isGroup, null, null, messageId);
                 
             } catch (error) {
                 await this.handleError(error, m.messages[0]);
@@ -250,37 +283,43 @@ class WhatsAppBot {
     async processMessage(userId, userMessage, chatId) {
         // Agregar mensaje del usuario a la sesión
         await sessionManager.addMessage(userId, 'user', userMessage, chatId);
-        
+
+        // Determinar si es un grupo basándose en el chatId
+        const isGroup = chatId.endsWith('@g.us');
+
+        // Obtener el prompt apropiado según el tipo de chat
+        const systemPrompt = promptLoader.getPrompt(isGroup);
+
         // Preparar mensajes para la IA
         const messages = [
-            { role: 'system', content: this.systemPrompt },
+            { role: 'system', content: systemPrompt },
             ...(await sessionManager.getMessages(userId, chatId))
         ];
-        
+
         // Generar respuesta con IA
         const aiResponse = await aiService.generateResponse(messages);
-        
+
         // Verificar si la respuesta contiene el marcador de activar soporte
         if (aiResponse.includes('{{ACTIVAR_SOPORTE}}')) {
             // Remover el marcador de la respuesta
             const cleanResponse = aiResponse.replace('{{ACTIVAR_SOPORTE}}', '').trim();
-            
+
             // Activar modo soporte
             await humanModeManager.setMode(userId, 'support');
             await sessionManager.updateSessionMode(userId, chatId, 'support');
-            
+
             // Agregar respuesta limpia a la sesión
             await sessionManager.addMessage(userId, 'assistant', cleanResponse, chatId);
-            
+
             // Registrar en logs
             await logger.log('SYSTEM', `Modo SOPORTE activado automáticamente para ${userId}`);
-            
+
             return cleanResponse;
         }
-        
+
         // Agregar respuesta de IA a la sesión
         await sessionManager.addMessage(userId, 'assistant', aiResponse, chatId);
-        
+
         return aiResponse;
     }
     

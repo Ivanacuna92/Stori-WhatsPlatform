@@ -108,17 +108,23 @@ export async function toggleHumanMode(phone, isHumanMode, mode = null) {
   return response.json();
 }
 
-export async function sendMessage(phone, message) {
+export async function sendMessage(phone, message, isGroup = false) {
+  // Formatear el phone con el sufijo correcto si no lo tiene
+  let formattedPhone = phone;
+  if (!phone.includes('@')) {
+    formattedPhone = isGroup ? `${phone}@g.us` : `${phone}@s.whatsapp.net`;
+  }
+
   const response = await fetchWithCredentials(`${API_BASE}/send-message`, {
     method: 'POST',
-    body: JSON.stringify({ phone, message })
+    body: JSON.stringify({ phone: formattedPhone, message })
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.details || 'Error enviando mensaje');
   }
-  
+
   return response.json();
 }
 
@@ -127,12 +133,40 @@ export async function endConversation(phone) {
     method: 'POST',
     body: JSON.stringify({ phone })
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.details || 'Error finalizando conversación');
   }
-  
+
+  return response.json();
+}
+
+export async function deleteConversation(phone) {
+  const response = await fetchWithCredentials(`${API_BASE}/delete-conversation`, {
+    method: 'POST',
+    body: JSON.stringify({ phone })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Error eliminando conversación');
+  }
+
+  return response.json();
+}
+
+export async function leaveGroup(phone) {
+  const response = await fetchWithCredentials(`${API_BASE}/leave-group`, {
+    method: 'POST',
+    body: JSON.stringify({ phone })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Error saliendo del grupo');
+  }
+
   return response.json();
 }
 
@@ -154,12 +188,12 @@ function processContactsFromLogs(logs, humanStates) {
   
   filteredLogs.forEach(log => {
     const phone = log.userId || 'Sin número';
-    
+
     if (!contacts[phone]) {
       // Determinar el modo actual del contacto
       let mode = 'ai';
       let isHumanMode = false;
-      
+
       if (humanStates[phone] === 'support') {
         mode = 'support';
         isHumanMode = false;
@@ -167,7 +201,10 @@ function processContactsFromLogs(logs, humanStates) {
         mode = 'human';
         isHumanMode = true;
       }
-      
+
+      // Convertir isGroup a booleano (puede venir como 0/1 de la BD)
+      const isGroupChat = Boolean(log.isGroup);
+
       contacts[phone] = {
         phone: phone,
         messages: [],
@@ -178,14 +215,28 @@ function processContactsFromLogs(logs, humanStates) {
         lastActivity: log.timestamp,
         lastMessage: null,
         isHumanMode: isHumanMode,
-        mode: mode
+        mode: mode,
+        isGroup: isGroupChat,
+        groupName: isGroupChat ? log.userName : null,
+        leftGroup: false // Inicialmente no ha salido
       };
     }
-    
+
+    // Actualizar isGroup y groupName si este log indica que es un grupo
+    if (log.isGroup && !contacts[phone].isGroup) {
+      contacts[phone].isGroup = true;
+      contacts[phone].groupName = log.userName;
+    }
+
+    // Detectar si el bot salió del grupo
+    if (log.type === 'SYSTEM' && log.message && log.message.includes('Bot salió del grupo')) {
+      contacts[phone].leftGroup = true;
+    }
+
     // Los mensajes BOT se mantienen como BOT
     // Solo marcar como SYSTEM los que realmente son del sistema (no de conversación)
     let processedLog = {...log};
-    
+
     contacts[phone].messages.push(processedLog);
     contacts[phone].totalMessages++;
     contacts[phone].lastActivity = log.timestamp;
@@ -333,5 +384,25 @@ export async function checkWhatsAppStatus() {
     return { connected: !data.qr, error: false };
   } catch (error) {
     return { connected: false, error: true };
+  }
+}
+
+// ===== FUNCIONES DE CONFIGURACIÓN DEL SISTEMA =====
+
+export async function getAIConfig() {
+  try {
+    const response = await fetchWithCredentials(`${API_BASE}/system-config`);
+
+    if (!response.ok) {
+      return { groupsAIEnabled: true, individualAIEnabled: true }; // Default values
+    }
+
+    const data = await response.json();
+    return {
+      groupsAIEnabled: data.groups_ai_enabled?.value === 'true',
+      individualAIEnabled: data.individual_ai_enabled?.value === 'true'
+    };
+  } catch (error) {
+    return { groupsAIEnabled: true, individualAIEnabled: true }; // Default values
   }
 }

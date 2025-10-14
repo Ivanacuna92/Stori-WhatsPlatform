@@ -6,13 +6,14 @@ class Logger {
         this.isProcessingQueue = false;
     }
 
-    async log(role, message, userId = null, userName = null, response = null, supportUserId = null, messageId = null) {
+    async log(role, message, userId = null, userName = null, isGroup = false, response = null, supportUserId = null, messageId = null) {
         const timestamp = new Date();
         const logEntry = {
             timestamp: timestamp.toISOString(),
             role, // 'cliente', 'bot', 'soporte'
             userId,
             userName,
+            isGroup,
             message,
             response,
             supportUserId,
@@ -22,7 +23,7 @@ class Logger {
 
         // Solo guardar en BD y mostrar en consola
         const insertedId = await this.saveToDB(logEntry);
-        this.printToConsole(logEntry.timestamp, role, message, userId);
+        this.printToConsole(logEntry.timestamp, role, message, userId, isGroup);
 
         return insertedId;
     }
@@ -38,6 +39,7 @@ class Logger {
                 timestamp: new Date(logEntry.timestamp),
                 user_id: logEntry.userId,
                 user_name: logEntry.userName,
+                is_group: logEntry.isGroup || false,
                 message: logEntry.message,
                 message_id: logEntry.messageId,
                 status: logEntry.status,
@@ -76,6 +78,7 @@ class Logger {
                     timestamp: new Date(logEntry.timestamp),
                     user_id: logEntry.userId,
                     user_name: logEntry.userName,
+                    is_group: logEntry.isGroup || false,
                     message: logEntry.message,
                     response: logEntry.response,
                     role: logEntry.role,
@@ -94,22 +97,23 @@ class Logger {
     }
 
 
-    printToConsole(timestamp, type, message, userId) {
-        const userInfo = userId ? ` (Usuario: ${userId})` : '';
+    printToConsole(timestamp, type, message, userId, isGroup = false) {
+        const userInfo = userId ? ` (${isGroup ? 'Grupo' : 'Usuario'}: ${userId})` : '';
         const time = timestamp.split('T')[1].split('.')[0]; // Solo hora:minuto:segundo
-        
+
         // Colores ANSI para terminal con fondos para mejor contraste
         const colors = {
             SYSTEM: '\x1b[46m\x1b[30m',    // Fondo Cyan, texto negro
-            USER: '\x1b[42m\x1b[30m',      // Fondo Verde, texto negro  
+            USER: '\x1b[42m\x1b[30m',      // Fondo Verde, texto negro
             BOT: '\x1b[43m\x1b[30m',       // Fondo Amarillo, texto negro
             ERROR: '\x1b[41m\x1b[37m',     // Fondo Rojo, texto blanco
             HUMAN: '\x1b[45m\x1b[37m',     // Fondo Magenta, texto blanco
             RESET: '\x1b[0m'                // Reset
         };
-        
+
         const color = colors[type] || colors.RESET;
-        console.log(`${color} [${time}] ${type} ${colors.RESET} ${message}${userInfo}`);
+        const groupIcon = isGroup ? '👥 ' : '';
+        console.log(`${color} [${time}] ${type} ${colors.RESET} ${groupIcon}${message}${userInfo}`);
     }
 
     async getLogs(date = null, limit = 1000, offset = 0) {
@@ -140,13 +144,14 @@ class Logger {
                 } else if (log.role) {
                     type = log.role.toUpperCase();
                 }
-                
+
                 return {
                     timestamp: log.timestamp.toISOString(),
                     type: type,
                     role: log.role,
                     userId: log.user_id,
                     userName: log.user_name,
+                    isGroup: log.is_group || false,
                     message: log.message,
                     messageId: log.message_id,
                     status: log.status,
@@ -222,6 +227,24 @@ class Logger {
             return true;
         } catch (error) {
             console.error('Error actualizando estado de mensaje:', error);
+            return false;
+        }
+    }
+
+    async deleteConversation(userId) {
+        if (!userId) {
+            return false;
+        }
+
+        try {
+            await database.query(
+                'DELETE FROM conversation_logs WHERE user_id = ?',
+                [userId]
+            );
+            console.log(`✅ Conversación eliminada para usuario: ${userId}`);
+            return true;
+        } catch (error) {
+            console.error('Error eliminando conversación:', error);
             return false;
         }
     }

@@ -4,6 +4,8 @@ const path = require('path');
 class PromptLoader {
     constructor() {
         this.promptPath = path.join(process.cwd(), 'prompt.txt');
+        this.groupPromptPath = path.join(process.cwd(), 'prompt-groups.txt');
+        this.defaultPrompt = 'Eres un asistente virtual útil y amigable. Responde de manera clara y concisa en español.';
     }
 
     load() {
@@ -11,7 +13,16 @@ class PromptLoader {
             return fs.readFileSync(this.promptPath, 'utf8');
         } catch (error) {
             console.error('Error cargando prompt.txt:', error);
-            return 'Eres un asistente virtual útil y amigable. Responde de manera clara y concisa en español.';
+            return this.defaultPrompt;
+        }
+    }
+
+    loadGroupPrompt() {
+        try {
+            return fs.readFileSync(this.groupPromptPath, 'utf8');
+        } catch (error) {
+            console.error('Error cargando prompt-groups.txt:', error);
+            return this.defaultPrompt;
         }
     }
 
@@ -25,8 +36,18 @@ class PromptLoader {
         }
     }
 
-    getPrompt() {
-        return this.load();
+    updateGroupPrompt(newPrompt) {
+        try {
+            fs.writeFileSync(this.groupPromptPath, newPrompt, 'utf8');
+            return true;
+        } catch (error) {
+            console.error('Error actualizando prompt de grupos:', error);
+            return false;
+        }
+    }
+
+    getPrompt(isGroup = false) {
+        return isGroup ? this.loadGroupPrompt() : this.load();
     }
 }
 

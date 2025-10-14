@@ -38,27 +38,31 @@ class HumanModeManager {
     
     async setMode(phone, mode, activatedBy = 'system') {
         // mode puede ser: false (IA), 'human', o 'support'
-        const isHumanMode = (mode === 'human' || mode === 'support');
-        
+        // Si mode es false o 'ai', convertir a false
+        const normalizedMode = (mode === 'ai' || mode === false) ? false : mode;
+        const isHumanMode = (normalizedMode === 'human' || normalizedMode === 'support');
+
+        console.log(`🔄 setMode llamado: phone=${phone}, mode=${mode}, normalizedMode=${normalizedMode}, isHumanMode=${isHumanMode}`);
+
         // Actualizar cache local
         this.localCache.set(phone, {
-            mode: mode,
+            mode: normalizedMode,
             activatedAt: isHumanMode ? new Date() : null,
             activatedBy: isHumanMode ? activatedBy : null
         });
-        
+
         // Actualizar en base de datos
         try {
             // Primero verificar si la columna 'mode' existe
             await this.ensureModeColumn();
-            
+
             const existingState = await database.findOne('human_mode_states', 'contact_id = ?', [phone]);
-            
+
             if (existingState) {
                 await database.update('human_mode_states',
                     {
                         is_human_mode: isHumanMode,
-                        mode: mode || 'ai',
+                        mode: normalizedMode || 'ai',
                         activated_at: isHumanMode ? new Date() : null,
                         activated_by: isHumanMode ? activatedBy : null,
                         updated_at: new Date()
@@ -70,16 +74,16 @@ class HumanModeManager {
                 await database.insert('human_mode_states', {
                     contact_id: phone,
                     is_human_mode: isHumanMode,
-                    mode: mode || 'ai',
+                    mode: normalizedMode || 'ai',
                     activated_at: isHumanMode ? new Date() : null,
                     activated_by: isHumanMode ? activatedBy : null
                 });
             }
-            
-            const modeText = mode === 'support' ? 'SOPORTE' : mode === 'human' ? 'HUMANO' : 'IA';
-            console.log(`Modo ${modeText} establecido para ${phone}`);
+
+            const modeText = normalizedMode === 'support' ? 'SOPORTE' : normalizedMode === 'human' ? 'HUMANO' : 'IA';
+            console.log(`✅ Modo ${modeText} establecido exitosamente para ${phone} en BD y cache`);
         } catch (error) {
-            console.error('Error actualizando modo en BD:', error);
+            console.error('❌ Error actualizando modo en BD:', error);
         }
     }
 
@@ -108,9 +112,11 @@ class HumanModeManager {
         // Verificar cache local primero
         if (this.localCache.has(phone)) {
             const state = this.localCache.get(phone);
-            return state.mode === 'human' || state.mode === true;
+            const isHuman = state.mode === 'human' || state.mode === true;
+            console.log(`🔍 isHumanMode(${phone}): cache=${JSON.stringify(state)}, result=${isHuman}`);
+            return isHuman;
         }
-        
+
         // Si no está en cache, buscar en BD
         try {
             const dbState = await database.findOne('human_mode_states', 'contact_id = ?', [phone]);
@@ -121,12 +127,14 @@ class HumanModeManager {
                     activatedAt: dbState.activated_at,
                     activatedBy: dbState.activated_by
                 });
+                console.log(`🔍 isHumanMode(${phone}): from DB, result=${isHuman}`);
                 return isHuman;
             }
         } catch (error) {
             console.error('Error verificando modo humano:', error);
         }
-        
+
+        console.log(`🔍 isHumanMode(${phone}): no cache/DB, result=false`);
         return false;
     }
     
@@ -135,8 +143,11 @@ class HumanModeManager {
         // Podrías agregar un campo adicional en la BD para distinguirlo
         if (this.localCache.has(phone)) {
             const state = this.localCache.get(phone);
-            return state.mode === 'support';
+            const isSupport = state.mode === 'support';
+            console.log(`🔍 isSupportMode(${phone}): cache=${JSON.stringify(state)}, result=${isSupport}`);
+            return isSupport;
         }
+        console.log(`🔍 isSupportMode(${phone}): no cache, result=false`);
         return false;
     }
     

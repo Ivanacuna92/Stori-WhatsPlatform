@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMessage, toggleHumanMode, endConversation } from '../services/api';
+import { sendMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, getAIConfig } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -10,7 +10,23 @@ function ChatPanel({ contact, onUpdateContact }) {
   const [endingConversation, setEndingConversation] = useState(false);
   const [supportHandledContacts, setSupportHandledContacts] = useState(new Set());
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showLeaveGroupModal, setShowLeaveGroupModal] = useState(false);
+  const [deletingConversation, setDeletingConversation] = useState(false);
+  const [leavingGroup, setLeavingGroup] = useState(false);
+  const [aiConfig, setAiConfig] = useState({ groupsAIEnabled: true, individualAIEnabled: true });
   const messagesEndRef = useRef(null);
+  const optionsMenuRef = useRef(null);
+
+  useEffect(() => {
+    // Cargar configuración de IA
+    const loadAIConfig = async () => {
+      const config = await getAIConfig();
+      setAiConfig(config);
+    };
+    loadAIConfig();
+  }, []);
 
   useEffect(() => {
     // Scroll automático e instantáneo al cambiar de contacto
@@ -22,6 +38,17 @@ function ChatPanel({ contact, onUpdateContact }) {
     }
   }, [contact?.phone]); // Solo cuando cambia el contacto
 
+  // Cerrar menú al hacer click fuera
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target)) {
+        setShowOptionsMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     // Scroll suave cuando llegan nuevos mensajes
     if (contact?.messages && contact.messages.length > 0) {
@@ -32,14 +59,15 @@ function ChatPanel({ contact, onUpdateContact }) {
   }, [contact?.messages?.length]); // Solo cuando cambia la cantidad de mensajes
   
   useEffect(() => {
-    // Mostrar modal solo si es modo soporte Y no hay mensajes HUMAN
-    if (contact?.mode === 'support' && contact?.phone) {
+    // Mostrar modal solo si es modo soporte Y no hay mensajes HUMAN Y NO es un grupo
+    if (contact?.mode === 'support' && contact?.phone && !contact?.isGroup) {
       // Verificar si ya hay mensajes de HUMAN en la conversación
       const hasHumanMessages = contact.messages?.some(msg => msg.type === 'HUMAN');
-      
+
       // Solo mostrar si:
-      // 1. No hay mensajes HUMAN (nadie ha tomado control)
-      // 2. No se ha mostrado antes para este contacto en esta sesión
+      // 1. No es un grupo
+      // 2. No hay mensajes HUMAN (nadie ha tomado control)
+      // 3. No se ha mostrado antes para este contacto en esta sesión
       if (!hasHumanMessages && !supportHandledContacts.has(contact.phone)) {
         setShowSupportModal(true);
         setSupportHandledContacts(prev => new Set([...prev, contact.phone]));
@@ -48,7 +76,7 @@ function ChatPanel({ contact, onUpdateContact }) {
         setShowSupportModal(false);
       }
     }
-  }, [contact?.mode, contact?.phone, contact?.messages]);
+  }, [contact?.mode, contact?.phone, contact?.messages, contact?.isGroup]);
 
   const handleSend = async () => {
     if (!message.trim() || !contact || sending) return;
@@ -60,7 +88,7 @@ function ChatPanel({ contact, onUpdateContact }) {
 
     setSending(true);
     try {
-      await sendMessage(contact.phone, message);
+      await sendMessage(contact.phone, message, contact.isGroup);
       setMessage('');
       
       const newMessage = {
@@ -84,11 +112,11 @@ function ChatPanel({ contact, onUpdateContact }) {
     try {
       // Si está en modo soporte, cambiar a IA
       if (contact.mode === 'support') {
-        await toggleHumanMode(contact.phone, false);
+        await toggleHumanMode(contact.phone, false, 'ai');
         onUpdateContact({ ...contact, isHumanMode: false, mode: 'ai' });
       } else {
         const newMode = !contact.isHumanMode;
-        await toggleHumanMode(contact.phone, newMode);
+        await toggleHumanMode(contact.phone, newMode, newMode ? 'human' : 'ai');
         onUpdateContact({ ...contact, isHumanMode: newMode, mode: newMode ? 'human' : 'ai' });
       }
     } catch (error) {
@@ -155,20 +183,41 @@ function ChatPanel({ contact, onUpdateContact }) {
       }}>
         <div className="flex items-center gap-4">
           <div className="relative">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{
-              background: isSupport ? 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)' : '#9CA3AF'
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{
+              background: contact.leftGroup
+                ? 'linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)'
+                : contact.isGroup
+                ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
+                : isSupport
+                ? 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)'
+                : 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+              opacity: contact.leftGroup ? 0.6 : 1
             }}>
-              {isSupport ? '👤' : contact.phone.slice(-2)}
+              {contact.isGroup ? (
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                </svg>
+              ) : isSupport ? (
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd"/>
+                </svg>
+              ) : (
+                contact.phone.slice(-2)
+              )}
             </div>
             {/* Indicador de modo */}
-            <div
-              className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white"
-              style={{ background: modeColor }}
-            ></div>
+            {!contact.leftGroup && (
+              <div
+                className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white"
+                style={{ background: modeColor }}
+              ></div>
+            )}
           </div>
-          <div>
+          <div className="flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-gray-800">{contact.phone}</h3>
+              <h3 className="font-semibold text-gray-800">
+                {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
+              </h3>
               <span
                 className="text-[10px] px-2 py-0.5 rounded-md font-medium"
                 style={{
@@ -190,8 +239,15 @@ function ChatPanel({ contact, onUpdateContact }) {
         </div>
 
         {/* Botones de acción */}
-        <div className="flex gap-2">
-          {isSupport ? (
+        <div className="flex items-center gap-2">
+          {contact.leftGroup ? (
+            <span className="px-4 py-2 rounded-xl text-sm font-medium" style={{
+              background: 'rgba(107, 114, 128, 0.1)',
+              color: '#6B7280'
+            }}>
+              Grupo Abandonado
+            </span>
+          ) : isSupport ? (
             <>
               <button
                 className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
@@ -209,11 +265,12 @@ function ChatPanel({ contact, onUpdateContact }) {
                   e.target.style.color = '#F97316';
                 }}
                 onClick={async () => {
-                  await toggleHumanMode(contact.phone, false);
+                  // Usar mode: 'ai' para cambiar explícitamente de soporte a IA
+                  await toggleHumanMode(contact.phone, false, 'ai');
                   onUpdateContact({ ...contact, isHumanMode: false, mode: 'ai' });
 
                   const transferMessage = "El soporte ha finalizado. Continuaré atendiéndote con mucho gusto. ¿Hay algo más en lo que pueda ayudarte?";
-                  await sendMessage(contact.phone, transferMessage);
+                  await sendMessage(contact.phone, transferMessage, contact.isGroup);
 
                   const newMessage = {
                     type: 'BOT',
@@ -292,8 +349,115 @@ function ChatPanel({ contact, onUpdateContact }) {
               Modo Humano
             </button>
           )}
+
+          {/* Botón de menú de opciones (3 puntos) */}
+          <div className="relative" ref={optionsMenuRef}>
+            <button
+              onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all"
+              style={{
+                background: showOptionsMenu ? 'rgba(92, 25, 227, 0.1)' : 'transparent',
+                color: showOptionsMenu ? '#5c19e3' : '#6B7280'
+              }}
+              onMouseEnter={(e) => {
+                if (!showOptionsMenu) {
+                  e.target.style.background = 'rgba(107, 114, 128, 0.1)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!showOptionsMenu) {
+                  e.target.style.background = 'transparent';
+                }
+              }}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/>
+              </svg>
+            </button>
+
+            {/* Menú desplegable */}
+            {showOptionsMenu && (
+              <div className="absolute right-0 mt-2 w-56 rounded-xl shadow-lg z-50" style={{
+                background: 'white',
+                border: '1px solid #E8EBED',
+                boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
+              }}>
+                <div className="py-1">
+                  <button
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      setShowDeleteModal(true);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all"
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = '#F3F4F6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Eliminar conversación</span>
+                  </button>
+
+                  {contact.isGroup && !contact.leftGroup && (
+                    <button
+                      onClick={() => {
+                        setShowOptionsMenu(false);
+                        setShowLeaveGroupModal(true);
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all"
+                      style={{ color: '#EF4444' }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'rgba(239, 68, 68, 0.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'transparent';
+                      }}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      <span>Salir del grupo</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Alerta de IA desactivada */}
+      {!contact.isHumanMode && !isSupport && (
+        (contact.isGroup && !aiConfig.groupsAIEnabled) || (!contact.isGroup && !aiConfig.individualAIEnabled)
+      ) && (
+        <div className="px-6 pt-4">
+          <div className="rounded-xl px-4 py-3 text-sm" style={{
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.2)',
+            color: '#991B1B'
+          }}>
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <p className="font-semibold mb-1">
+                  ⚠️ IA {contact.isGroup ? 'de Grupos' : 'Individual'} Desactivada
+                </p>
+                <p className="text-xs">
+                  La inteligencia artificial está desactivada para {contact.isGroup ? 'grupos' : 'chats individuales'}.
+                  Los clientes no recibirán respuestas automáticas. Activa el modo humano o habilita la IA desde el panel de sesión.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Área de mensajes */}
       <div className="flex-1 overflow-y-auto p-6 space-y-3" style={{ background: '#FAFBFC' }}>
@@ -421,57 +585,68 @@ function ChatPanel({ contact, onUpdateContact }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input de mensaje */}
-      <div className="bg-white px-6 py-4 flex gap-3" style={{
-        borderTop: '1px solid #E8EBED',
-        boxShadow: '0 -1px 3px rgba(0, 0, 0, 0.02)'
-      }}>
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={contact.isHumanMode || contact.mode === 'support' ? 'Escribe un mensaje...' : 'Activa MODO HUMANO para escribir'}
-          disabled={(!contact.isHumanMode && contact.mode !== 'support') || sending}
-          className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50"
-          style={{
-            background: '#F3F4F6',
-            border: '1px solid transparent'
-          }}
-          onFocus={(e) => {
-            if (!e.target.disabled) {
-              e.target.style.background = '#ffffff';
-              e.target.style.border = '1px solid #5c19e3';
-              e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
-            }
-          }}
-          onBlur={(e) => {
-            e.target.style.background = '#F3F4F6';
-            e.target.style.border = '1px solid transparent';
-            e.target.style.boxShadow = 'none';
-          }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={(!contact.isHumanMode && contact.mode !== 'support') || sending || !message.trim()}
-          className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            background: '#5c19e3'
-          }}
-          onMouseEnter={(e) => {
-            if (!e.target.disabled) {
-              e.target.style.background = '#4c10d4';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!e.target.disabled) {
-              e.target.style.background = '#5c19e3';
-            }
-          }}
-        >
-          {sending ? '...' : 'Enviar'}
-        </button>
-      </div>
+      {/* Input de mensaje o mensaje de grupo abandonado */}
+      {contact.leftGroup ? (
+        <div className="bg-white px-6 py-4 flex items-center justify-center" style={{
+          borderTop: '1px solid #E8EBED',
+          boxShadow: '0 -1px 3px rgba(0, 0, 0, 0.02)'
+        }}>
+          <div className="text-center py-2">
+            <p className="text-sm font-medium text-gray-500">Ya no puedes enviar mensajes a este grupo</p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white px-6 py-4 flex gap-3" style={{
+          borderTop: '1px solid #E8EBED',
+          boxShadow: '0 -1px 3px rgba(0, 0, 0, 0.02)'
+        }}>
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            placeholder={contact.isHumanMode || contact.mode === 'support' ? 'Escribe un mensaje...' : 'Activa MODO HUMANO para escribir'}
+            disabled={(!contact.isHumanMode && contact.mode !== 'support') || sending}
+            className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50"
+            style={{
+              background: '#F3F4F6',
+              border: '1px solid transparent'
+            }}
+            onFocus={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#ffffff';
+                e.target.style.border = '1px solid #5c19e3';
+                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              }
+            }}
+            onBlur={(e) => {
+              e.target.style.background = '#F3F4F6';
+              e.target.style.border = '1px solid transparent';
+              e.target.style.boxShadow = 'none';
+            }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={(!contact.isHumanMode && contact.mode !== 'support') || sending || !message.trim()}
+            className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: '#5c19e3'
+            }}
+            onMouseEnter={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#4c10d4';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.target.disabled) {
+                e.target.style.background = '#5c19e3';
+              }
+            }}
+          >
+            {sending ? '...' : 'Enviar'}
+          </button>
+        </div>
+      )}
 
       {/* Modal de soporte activado */}
       {showSupportModal && (
@@ -529,7 +704,7 @@ function ChatPanel({ contact, onUpdateContact }) {
 
                     setShowSupportModal(false);
 
-                    await sendMessage(contact.phone, presentationMessage);
+                    await sendMessage(contact.phone, presentationMessage, contact.isGroup);
 
                     const newMessage = {
                       type: 'HUMAN',
@@ -600,6 +775,152 @@ function ChatPanel({ contact, onUpdateContact }) {
                 onMouseLeave={(e) => !endingConversation && (e.target.style.background = '#EF4444')}
               >
                 {endingConversation ? 'Finalizando...' : 'Finalizar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal eliminar conversación */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" style={{
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)'
+          }}>
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{
+                background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                boxShadow: '0 8px 20px rgba(239, 68, 68, 0.3)'
+              }}>
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-2 text-center text-gray-800">
+              Eliminar Conversación
+            </h3>
+            <p className="text-sm text-gray-500 mb-6 text-center">
+              ¿Estás seguro de que deseas eliminar esta conversación? Esta acción no se puede deshacer.
+            </p>
+            <div className="rounded-xl p-4 mb-6" style={{
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.2)'
+            }}>
+              <p className="text-sm text-gray-700">
+                <strong className="text-red-600">Atención:</strong> Se eliminará todo el historial de mensajes con este contacto.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deletingConversation}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-50"
+                style={{
+                  background: '#F3F4F6',
+                  color: '#6B7280'
+                }}
+                onMouseEnter={(e) => !deletingConversation && (e.target.style.background = '#E5E7EB')}
+                onMouseLeave={(e) => !deletingConversation && (e.target.style.background = '#F3F4F6')}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  setDeletingConversation(true);
+                  try {
+                    await deleteConversation(contact.phone);
+                    setShowDeleteModal(false);
+                    setDeletingConversation(false);
+                    // Recargar la página para actualizar la lista de contactos
+                    window.location.reload();
+                  } catch (error) {
+                    setDeletingConversation(false);
+                    alert('Error eliminando conversación: ' + error.message);
+                  }
+                }}
+                disabled={deletingConversation}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: '#EF4444' }}
+                onMouseEnter={(e) => !deletingConversation && (e.target.style.background = '#DC2626')}
+                onMouseLeave={(e) => !deletingConversation && (e.target.style.background = '#EF4444')}
+              >
+                {deletingConversation ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal salir del grupo */}
+      {showLeaveGroupModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" style={{
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)'
+          }}>
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{
+                background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                boxShadow: '0 8px 20px rgba(245, 158, 11, 0.3)'
+              }}>
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold mb-2 text-center text-gray-800">
+              Salir del Grupo
+            </h3>
+            <p className="text-sm text-gray-500 mb-6 text-center">
+              ¿Estás seguro de que deseas salir de este grupo? El bot dejará de recibir mensajes de este grupo.
+            </p>
+            <div className="rounded-xl p-4 mb-6" style={{
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.2)'
+            }}>
+              <p className="text-sm text-gray-700">
+                <strong className="text-amber-600">Atención:</strong> Esta acción hará que el bot abandone el grupo "{contact.groupName || contact.phone}".
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLeaveGroupModal(false)}
+                disabled={leavingGroup}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-50"
+                style={{
+                  background: '#F3F4F6',
+                  color: '#6B7280'
+                }}
+                onMouseEnter={(e) => !leavingGroup && (e.target.style.background = '#E5E7EB')}
+                onMouseLeave={(e) => !leavingGroup && (e.target.style.background = '#F3F4F6')}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  setLeavingGroup(true);
+                  try {
+                    await leaveGroup(contact.phone);
+                    setShowLeaveGroupModal(false);
+                    setLeavingGroup(false);
+
+                    // Marcar el contacto como "leftGroup"
+                    onUpdateContact({
+                      ...contact,
+                      leftGroup: true
+                    });
+                  } catch (error) {
+                    setLeavingGroup(false);
+                    alert('Error saliendo del grupo: ' + error.message);
+                  }
+                }}
+                disabled={leavingGroup}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: '#F59E0B' }}
+                onMouseEnter={(e) => !leavingGroup && (e.target.style.background = '#D97706')}
+                onMouseLeave={(e) => !leavingGroup && (e.target.style.background = '#F59E0B')}
+              >
+                {leavingGroup ? 'Saliendo...' : 'Salir del Grupo'}
               </button>
             </div>
           </div>
