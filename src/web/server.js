@@ -877,13 +877,6 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             }
         });
 
-        // Servir React app para todas las rutas no-API (solo en producción)
-        if (process.env.NODE_ENV === 'production') {
-            this.app.get('*', (req, res) => {
-                res.sendFile(path.join(__dirname, '../../dist', 'index.html'));
-            });
-        }
-
         // API endpoint para finalizar conversación
         this.app.post('/api/end-conversation', async (req, res) => {
             try {
@@ -1294,6 +1287,18 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 res.status(500).json({ error: 'Error actualizando prompt' });
             }
         });
+
+        // Servir React app para todas las rutas no-API (solo en producción)
+        // IMPORTANTE: Este debe ser el último route handler
+        if (process.env.NODE_ENV === 'production') {
+            this.app.get('*', (req, res) => {
+                // No capturar rutas API - dejar que express maneje el 404
+                if (req.path.startsWith('/api/')) {
+                    return res.status(404).json({ error: 'API endpoint not found' });
+                }
+                res.sendFile(path.join(__dirname, '../../dist', 'index.html'));
+            });
+        }
     }
 
     calculateStats(logs) {
