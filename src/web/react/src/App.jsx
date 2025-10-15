@@ -4,6 +4,8 @@ import ChatPanel from './components/ChatPanel';
 import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
 import QRDisplay from './components/QRDisplay';
+import UserAdmin from './components/UserAdmin';
+import MySession from './components/MySession';
 import Header from './components/Header';
 import Login from './components/Login';
 import { checkAuth, logout } from './services/api';
@@ -134,8 +136,8 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      <Header 
-        currentView={currentView} 
+      <Header
+        currentView={currentView}
         onViewChange={setCurrentView}
         user={user}
         onLogout={handleLogout}
@@ -144,8 +146,10 @@ function App() {
         <Dashboard />
       ) : currentView === 'reports' ? (
         <Reports />
-      ) : currentView === 'whatsapp' && user?.role === 'admin' ? (
-        <QRDisplay />
+      ) : currentView === 'users' && user?.role === 'admin' ? (
+        <UserAdmin />
+      ) : currentView === 'session' ? (
+        <MySession />
       ) : (
         <div className="flex flex-1 overflow-hidden">
           <ContactsList

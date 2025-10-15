@@ -406,3 +406,146 @@ export async function getAIConfig() {
     return { groupsAIEnabled: true, individualAIEnabled: true }; // Default values
   }
 }
+
+// ===== FUNCIONES DE GESTIÓN DE USUARIOS (MULTI-USER) =====
+
+// Obtener todos los usuarios (solo admin)
+export async function getUsers() {
+  const response = await fetchWithCredentials(`${API_BASE}/users`);
+
+  if (!response.ok) {
+    throw new Error('Error al obtener usuarios');
+  }
+
+  return response.json();
+}
+
+// Crear nuevo usuario (solo admin)
+export async function createUser(userData) {
+  const response = await fetchWithCredentials(`${API_BASE}/users`, {
+    method: 'POST',
+    body: JSON.stringify(userData)
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al crear usuario');
+  }
+
+  return response.json();
+}
+
+// Actualizar usuario (solo admin)
+export async function updateUser(id, userData) {
+  const response = await fetchWithCredentials(`${API_BASE}/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(userData)
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al actualizar usuario');
+  }
+
+  return response.json();
+}
+
+// Eliminar usuario (solo admin)
+export async function deleteUser(id) {
+  const response = await fetchWithCredentials(`${API_BASE}/users/${id}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al eliminar usuario');
+  }
+
+  return response.json();
+}
+
+// ===== FUNCIONES DE GESTIÓN DE INSTANCIAS DE WHATSAPP =====
+
+// Obtener QR de mi instancia
+export async function getMyQR() {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/qr`);
+
+  if (!response.ok) {
+    throw new Error('Error al obtener código QR');
+  }
+
+  return response.json();
+}
+
+// Obtener estado de mi instancia
+export async function getMyStatus() {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/status`);
+
+  if (!response.ok) {
+    throw new Error('Error al obtener estado de instancia');
+  }
+
+  return response.json();
+}
+
+// Reiniciar mi sesión de WhatsApp
+export async function resetMySession() {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/logout`, {
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Error al reiniciar sesión');
+  }
+
+  return response.json();
+}
+
+// Obtener todas las instancias (solo admin)
+export async function getInstances() {
+  const response = await fetchWithCredentials(`${API_BASE}/instances`);
+
+  if (!response.ok) {
+    throw new Error('Error al obtener instancias');
+  }
+
+  return response.json();
+}
+
+// ===== FUNCIONES DE CONTACTOS FILTRADOS POR USUARIO =====
+
+// Obtener mis contactos asignados
+export async function getMyContacts() {
+  try {
+    const response = await fetchWithCredentials(`${API_BASE}/my-contacts`);
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        window.location.href = '/';
+        return [];
+      }
+      throw new Error('Error al obtener contactos');
+    }
+
+    const contacts = await response.json();
+    return contacts;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// Enviar mensaje desde mi instancia
+export async function sendMyMessage(phone, message, isGroup = false) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-message`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, message, isGroup })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Error enviando mensaje');
+  }
+
+  return response.json();
+}

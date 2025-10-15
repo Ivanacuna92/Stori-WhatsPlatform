@@ -1,25 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import logo from '../assets/logo.svg';
+import React from 'react';
 import icono from '../assets/icono.jpeg';
-import { checkWhatsAppStatus } from '../services/api';
 
 function Header({ currentView, onViewChange, user, onLogout }) {
-  const [whatsappStatus, setWhatsappStatus] = useState({ connected: false, loading: true });
-
-  useEffect(() => {
-    // Verificar estado inicial
-    checkStatus();
-
-    // Polling cada 10 segundos
-    const interval = setInterval(checkStatus, 10000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const checkStatus = async () => {
-    const status = await checkWhatsAppStatus();
-    setWhatsappStatus({ connected: status.connected, loading: false });
-  };
   return (
     <header className="sticky top-0 z-50 bg-white px-6 py-3" style={{
       borderBottom: '1px solid #E8EBED',
@@ -103,37 +85,50 @@ function Header({ currentView, onViewChange, user, onLogout }) {
           </button>
           {user?.role === 'admin' && (
             <button
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 relative"
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
               style={{
-                background: currentView === 'whatsapp' ? '#5c19e3' : 'transparent',
-                color: currentView === 'whatsapp' ? 'white' : '#6B7280'
+                background: currentView === 'users' ? '#5c19e3' : 'transparent',
+                color: currentView === 'users' ? 'white' : '#6B7280'
               }}
               onMouseEnter={(e) => {
-                if (currentView !== 'whatsapp') {
+                if (currentView !== 'users') {
                   e.target.style.background = '#F3F4F6';
                   e.target.style.color = '#374151';
                 }
               }}
               onMouseLeave={(e) => {
-                if (currentView !== 'whatsapp') {
+                if (currentView !== 'users') {
                   e.target.style.background = 'transparent';
                   e.target.style.color = '#6B7280';
                 }
               }}
-              onClick={() => onViewChange('whatsapp')}
+              onClick={() => onViewChange('users')}
             >
-              Sesión
-              {/* Indicador de estado de WhatsApp */}
-              <span
-                className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white transition-all"
-                style={{
-                  background: whatsappStatus.loading ? '#F59E0B' : whatsappStatus.connected ? '#22C55E' : '#EF4444',
-                  boxShadow: whatsappStatus.loading ? '0 0 4px rgba(245, 158, 11, 0.4)' : whatsappStatus.connected ? '0 0 4px rgba(34, 197, 94, 0.4)' : '0 0 4px rgba(239, 68, 68, 0.4)'
-                }}
-                title={whatsappStatus.loading ? 'Verificando conexión...' : whatsappStatus.connected ? 'WhatsApp conectado' : 'WhatsApp desconectado'}
-              ></span>
+              Usuarios
             </button>
           )}
+          <button
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+            style={{
+              background: currentView === 'session' ? '#5c19e3' : 'transparent',
+              color: currentView === 'session' ? 'white' : '#6B7280'
+            }}
+            onMouseEnter={(e) => {
+              if (currentView !== 'session') {
+                e.target.style.background = '#F3F4F6';
+                e.target.style.color = '#374151';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (currentView !== 'session') {
+                e.target.style.background = 'transparent';
+                e.target.style.color = '#6B7280';
+              }
+            }}
+            onClick={() => onViewChange('session')}
+          >
+            Mi Sesión
+          </button>
         </nav>
 
         {/* Usuario y logout */}

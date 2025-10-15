@@ -1288,6 +1288,10 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             }
         });
 
+        // ===== ENDPOINTS MULTI-USUARIO E INSTANCIAS =====
+        const multiUserEndpoints = require('./endpointsMultiUser');
+        multiUserEndpoints(this.app, requireAuth, requireAdmin);
+
         // Servir React app para todas las rutas no-API (solo en producción)
         // IMPORTANTE: Este debe ser el último route handler
         if (process.env.NODE_ENV === 'production') {

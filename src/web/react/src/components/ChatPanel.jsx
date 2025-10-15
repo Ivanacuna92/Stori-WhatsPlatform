@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, getAIConfig } from '../services/api';
+import { sendMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -15,18 +15,8 @@ function ChatPanel({ contact, onUpdateContact }) {
   const [showLeaveGroupModal, setShowLeaveGroupModal] = useState(false);
   const [deletingConversation, setDeletingConversation] = useState(false);
   const [leavingGroup, setLeavingGroup] = useState(false);
-  const [aiConfig, setAiConfig] = useState({ groupsAIEnabled: true, individualAIEnabled: true });
   const messagesEndRef = useRef(null);
   const optionsMenuRef = useRef(null);
-
-  useEffect(() => {
-    // Cargar configuración de IA
-    const loadAIConfig = async () => {
-      const config = await getAIConfig();
-      setAiConfig(config);
-    };
-    loadAIConfig();
-  }, []);
 
   useEffect(() => {
     // Scroll automático e instantáneo al cambiar de contacto
@@ -88,7 +78,7 @@ function ChatPanel({ contact, onUpdateContact }) {
 
     setSending(true);
     try {
-      await sendMessage(contact.phone, message, contact.isGroup);
+      await sendMyMessage(contact.phone, message, contact.isGroup);
       setMessage('');
       
       const newMessage = {
@@ -270,7 +260,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                   onUpdateContact({ ...contact, isHumanMode: false, mode: 'ai' });
 
                   const transferMessage = "El soporte ha finalizado. Continuaré atendiéndote con mucho gusto. ¿Hay algo más en lo que pueda ayudarte?";
-                  await sendMessage(contact.phone, transferMessage, contact.isGroup);
+                  await sendMyMessage(contact.phone, transferMessage, contact.isGroup);
 
                   const newMessage = {
                     type: 'BOT',
@@ -430,34 +420,6 @@ function ChatPanel({ contact, onUpdateContact }) {
           </div>
         </div>
       </div>
-
-      {/* Alerta de IA desactivada */}
-      {!contact.isHumanMode && !isSupport && (
-        (contact.isGroup && !aiConfig.groupsAIEnabled) || (!contact.isGroup && !aiConfig.individualAIEnabled)
-      ) && (
-        <div className="px-6 pt-4">
-          <div className="rounded-xl px-4 py-3 text-sm" style={{
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            color: '#991B1B'
-          }}>
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <p className="font-semibold mb-1">
-                  ⚠️ IA {contact.isGroup ? 'de Grupos' : 'Individual'} Desactivada
-                </p>
-                <p className="text-xs">
-                  La inteligencia artificial está desactivada para {contact.isGroup ? 'grupos' : 'chats individuales'}.
-                  Los clientes no recibirán respuestas automáticas. Activa el modo humano o habilita la IA desde el panel de sesión.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Área de mensajes */}
       <div className="flex-1 overflow-y-auto p-6 space-y-3" style={{ background: '#FAFBFC' }}>
@@ -704,7 +666,7 @@ function ChatPanel({ contact, onUpdateContact }) {
 
                     setShowSupportModal(false);
 
-                    await sendMessage(contact.phone, presentationMessage, contact.isGroup);
+                    await sendMyMessage(contact.phone, presentationMessage, contact.isGroup);
 
                     const newMessage = {
                       type: 'HUMAN',

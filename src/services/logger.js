@@ -249,6 +249,36 @@ class Logger {
         }
     }
 
+    async getLogsByClientPhone(clientPhone) {
+        if (!clientPhone) {
+            return [];
+        }
+
+        try {
+            const logs = await database.query(
+                'SELECT * FROM conversation_logs WHERE user_id = ? ORDER BY timestamp ASC',
+                [clientPhone]
+            );
+
+            return logs.map(log => ({
+                timestamp: log.timestamp.toISOString(),
+                type: log.role === 'cliente' ? 'USER' : log.role === 'bot' ? 'BOT' : log.role === 'soporte' ? 'HUMAN' : log.role?.toUpperCase(),
+                role: log.role,
+                userId: log.user_id,
+                userName: log.user_name,
+                isGroup: log.is_group || false,
+                message: log.message,
+                messageId: log.message_id,
+                status: log.status,
+                response: log.response,
+                supportUserId: log.support_user_id
+            }));
+        } catch (error) {
+            console.error('Error obteniendo logs por teléfono de cliente:', error);
+            return [];
+        }
+    }
+
 }
 
 module.exports = new Logger();

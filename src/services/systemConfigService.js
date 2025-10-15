@@ -89,7 +89,7 @@ class SystemConfigService {
 
     // Métodos de conveniencia para configuraciones específicas
     async isGroupsAIEnabled() {
-        const value = await this.getConfig('groups_ai_enabled', 'true');
+        const value = await this.getConfig('groups_ai_enabled', 'false');
         return value === 'true' || value === true;
     }
 
@@ -98,7 +98,7 @@ class SystemConfigService {
     }
 
     async isIndividualAIEnabled() {
-        const value = await this.getConfig('individual_ai_enabled', 'true');
+        const value = await this.getConfig('individual_ai_enabled', 'false');
         return value === 'true' || value === true;
     }
 

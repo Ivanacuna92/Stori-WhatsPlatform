@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { fetchContacts, toggleHumanMode } from '../services/api';
+import { getMyContacts, toggleHumanMode } from '../services/api';
 
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('chats'); // 'chats' o 'groups'
   const [lastReadMessages, setLastReadMessages] = useState(() => {
     // Cargar del localStorage al iniciar
     const saved = localStorage.getItem('lastReadMessages');
@@ -24,7 +23,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
 
   const loadContacts = async () => {
     try {
-      const data = await fetchContacts();
+      const data = await getMyContacts();
 
       // Actualizar solo si hay cambios reales
       setContacts(prevContacts => {
@@ -116,12 +115,6 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
 
   const filteredContacts = contacts
     .filter(contact => {
-      // Filtrar por tab activo
-      const isGroupContact = contact.isGroup === true;
-
-      if (activeTab === 'chats' && isGroupContact) return false;
-      if (activeTab === 'groups' && !isGroupContact) return false;
-
       const searchLower = searchTerm.toLowerCase();
 
       // Buscar en el número de teléfono o nombre de grupo
@@ -168,30 +161,6 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
       {/* Header estilo moderno */}
       <div className="p-6 pb-4">
         <h2 className="text-base font-semibold text-gray-800 mb-4">Conversaciones</h2>
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setActiveTab('chats')}
-            className="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200"
-            style={{
-              background: activeTab === 'chats' ? '#5c19e3' : '#F3F4F6',
-              color: activeTab === 'chats' ? 'white' : '#6B7280'
-            }}
-          >
-            Chats
-          </button>
-          <button
-            onClick={() => setActiveTab('groups')}
-            className="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200"
-            style={{
-              background: activeTab === 'groups' ? '#5c19e3' : '#F3F4F6',
-              color: activeTab === 'groups' ? 'white' : '#6B7280'
-            }}
-          >
-            Grupos
-          </button>
-        </div>
 
         <div className="relative">
           <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -337,30 +306,9 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className={`text-xs truncate flex-1 pr-2 ${contact.leftGroup ? 'text-gray-400 italic' : getUnreadCount(contact) > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-                      {contact.leftGroup ? 'Ya no eres miembro' : contact.lastMessage?.text || 'Sin mensajes'}
-                    </p>
-                    {!contact.leftGroup && (
-                      <span
-                        className="text-[10px] px-2 py-0.5 rounded-md font-medium"
-                        style={{
-                          background: contact.mode === 'support'
-                            ? 'rgba(249, 115, 22, 0.1)'
-                            : contact.isHumanMode
-                              ? 'rgba(59, 130, 246, 0.1)'
-                              : 'rgba(92, 25, 227, 0.1)',
-                          color: contact.mode === 'support'
-                            ? '#EA580C'
-                            : contact.isHumanMode
-                              ? '#3B82F6'
-                              : '#5c19e3'
-                        }}
-                      >
-                        {contact.mode === 'support' ? 'SOP' : contact.isHumanMode ? 'HUM' : 'IA'}
-                      </span>
-                    )}
-                  </div>
+                  <p className={`text-xs truncate ${contact.leftGroup ? 'text-gray-400 italic' : getUnreadCount(contact) > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                    {contact.leftGroup ? 'Ya no eres miembro' : contact.lastMessage?.text || 'Sin mensajes'}
+                  </p>
                 </div>
               </div>
             </div>
