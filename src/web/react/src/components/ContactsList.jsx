@@ -178,7 +178,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             }}
             onFocus={(e) => {
               e.target.style.background = '#ffffff';
-              e.target.style.border = '1px solid #5c19e3';
+              e.target.style.border = '1px solid #00CC7B';
               e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
             }}
             onBlur={(e) => {
@@ -263,7 +263,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                           ? '#F97316'
                           : contact.isHumanMode
                             ? '#3B82F6'
-                            : '#5c19e3',
+                            : '#00CC7B',
                         borderColor: selectedContact?.phone === contact.phone ? '#ffffff' : '#FAFBFC'
                       }}
                     ></div>
@@ -288,7 +288,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                         <>
                           {getUnreadCount(contact) > 0 && (
                             <span className="min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{
-                              background: '#5c19e3',
+                              background: '#00CC7B',
                               boxShadow: '0 2px 4px rgba(92, 25, 227, 0.3)'
                             }}>
                               {getUnreadCount(contact) > 99 ? '99+' : getUnreadCount(contact)}

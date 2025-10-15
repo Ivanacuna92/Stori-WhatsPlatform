@@ -161,7 +161,7 @@ function ChatPanel({ contact, onUpdateContact }) {
   const isSupport = contact.mode === 'support';
   const isHuman = contact.isHumanMode;
 
-  const modeColor = isSupport ? '#F97316' : isHuman ? '#3B82F6' : '#5c19e3';
+  const modeColor = isSupport ? '#F97316' : isHuman ? '#3B82F6' : '#00CC7B';
   const modeLabel = isSupport ? 'Soporte' : isHuman ? 'Humano' : 'IA';
 
   return (
@@ -324,15 +324,15 @@ function ChatPanel({ contact, onUpdateContact }) {
               className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
               style={{
                 background: 'rgba(92, 25, 227, 0.1)',
-                color: '#5c19e3'
+                color: '#00CC7B'
               }}
               onMouseEnter={(e) => {
-                e.target.style.background = '#5c19e3';
+                e.target.style.background = '#00CC7B';
                 e.target.style.color = 'white';
               }}
               onMouseLeave={(e) => {
                 e.target.style.background = 'rgba(92, 25, 227, 0.1)';
-                e.target.style.color = '#5c19e3';
+                e.target.style.color = '#00CC7B';
               }}
               onClick={handleToggleMode}
             >
@@ -347,7 +347,7 @@ function ChatPanel({ contact, onUpdateContact }) {
               className="w-10 h-10 rounded-xl flex items-center justify-center transition-all"
               style={{
                 background: showOptionsMenu ? 'rgba(92, 25, 227, 0.1)' : 'transparent',
-                color: showOptionsMenu ? '#5c19e3' : '#6B7280'
+                color: showOptionsMenu ? '#00CC7B' : '#6B7280'
               }}
               onMouseEnter={(e) => {
                 if (!showOptionsMenu) {
@@ -474,7 +474,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                 border: '1px solid #E8EBED'
               } : {
                 borderRadius: '12px 12px 2px 12px',
-                backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#5c19e3',
+                backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#00CC7B',
                 boxShadow: isMessageFromSupport ? '0 2px 8px rgba(249, 115, 22, 0.2)' : isMessageFromHuman ? '0 2px 8px rgba(59, 130, 246, 0.2)' : '0 2px 8px rgba(92, 25, 227, 0.2)'
               }}>
                 <div className={`text-[10px] font-semibold mb-1 ${isClient ? 'text-gray-500' : 'text-white/80'}`}>
@@ -577,7 +577,7 @@ function ChatPanel({ contact, onUpdateContact }) {
             onFocus={(e) => {
               if (!e.target.disabled) {
                 e.target.style.background = '#ffffff';
-                e.target.style.border = '1px solid #5c19e3';
+                e.target.style.border = '1px solid #00CC7B';
                 e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
               }
             }}
@@ -592,16 +592,16 @@ function ChatPanel({ contact, onUpdateContact }) {
             disabled={(!contact.isHumanMode && contact.mode !== 'support') || sending || !message.trim()}
             className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
-              background: '#5c19e3'
+              background: '#00CC7B'
             }}
             onMouseEnter={(e) => {
               if (!e.target.disabled) {
-                e.target.style.background = '#4c10d4';
+                e.target.style.background = '#009958';
               }
             }}
             onMouseLeave={(e) => {
               if (!e.target.disabled) {
-                e.target.style.background = '#5c19e3';
+                e.target.style.background = '#00CC7B';
               }
             }}
           >
