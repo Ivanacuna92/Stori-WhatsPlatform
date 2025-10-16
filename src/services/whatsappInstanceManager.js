@@ -267,14 +267,23 @@ class WhatsAppInstanceManager {
                 } catch (error) {
                     console.log('No se pudo obtener metadata del grupo:', error.message);
                 }
-
-                await logger.log('cliente', conversation, userId, groupName, isGroup, supportUserId);
             } else {
                 userId = from.replace('@s.whatsapp.net', '');
                 userName = msg.pushName || userId;
-
-                await logger.log('cliente', conversation, userId, userName, isGroup, supportUserId);
             }
+
+            // VERIFICAR SI EL CLIENTE ESTÁ ASIGNADO A OTRO USUARIO DE SOPORTE
+            const existingAssignment = await this.getClientAssignment(userId);
+
+            if (existingAssignment && existingAssignment.support_user_id !== supportUserId) {
+                // Este cliente está asignado a otro usuario de soporte, ignorar el mensaje
+                console.log(`⏭️  Mensaje ignorado: Cliente ${userId} está asignado a usuario ${existingAssignment.support_user_id}, no a ${supportUserId}`);
+                return;
+            }
+
+            // Log del mensaje
+            const displayName = isGroup ? groupName : userName;
+            await logger.log('cliente', conversation, userId, displayName, isGroup, supportUserId);
 
             // Asignar cliente a este usuario de soporte si no está asignado
             await this.assignClientToUser(userId, supportUserId, isGroup, groupName);
@@ -315,7 +324,6 @@ class WhatsAppInstanceManager {
             // Enviar respuesta
             const sentMsg = await instanceData.sock.sendMessage(from, { text: response });
             const messageId = sentMsg?.key?.id;
-            const displayName = isGroup ? groupName : userName;
             await logger.log('bot', response, userId, displayName, isGroup, supportUserId, null, messageId);
 
         } catch (error) {
@@ -350,16 +358,42 @@ class WhatsAppInstanceManager {
         return aiResponse;
     }
 
+    // Obtener asignación de cliente (si existe)
+    async getClientAssignment(clientPhone) {
+        try {
+            return await database.findOne(
+                'client_assignments',
+                'client_phone = ?',
+                [clientPhone]
+            );
+        } catch (error) {
+            console.error('Error obteniendo asignación de cliente:', error);
+            return null;
+        }
+    }
+
     // Asignar cliente a usuario de soporte
     async assignClientToUser(clientPhone, supportUserId, isGroup = false, groupName = null) {
         try {
-            const existing = await database.findOne(
-                'client_assignments',
-                'client_phone = ? AND support_user_id = ?',
-                [clientPhone, supportUserId]
-            );
+            // Verificar si el cliente ya está asignado a CUALQUIER usuario
+            const existingAssignment = await this.getClientAssignment(clientPhone);
 
-            if (!existing) {
+            if (existingAssignment) {
+                // Solo actualizar last_message_at si es el mismo usuario
+                if (existingAssignment.support_user_id === supportUserId) {
+                    await database.update(
+                        'client_assignments',
+                        { last_message_at: new Date() },
+                        'id = ?',
+                        [existingAssignment.id]
+                    );
+                    console.log(`✅ Actualizada última actividad para cliente ${clientPhone} (Usuario ${supportUserId})`);
+                } else {
+                    // Cliente asignado a otro usuario, no hacer nada
+                    console.log(`⚠️  Cliente ${clientPhone} ya está asignado a usuario ${existingAssignment.support_user_id}`);
+                }
+            } else {
+                // Cliente nuevo, crear asignación
                 await database.insert('client_assignments', {
                     client_phone: clientPhone,
                     support_user_id: supportUserId,
@@ -367,13 +401,7 @@ class WhatsAppInstanceManager {
                     group_name: groupName,
                     last_message_at: new Date()
                 });
-            } else {
-                await database.update(
-                    'client_assignments',
-                    { last_message_at: new Date() },
-                    'id = ?',
-                    [existing.id]
-                );
+                console.log(`✅ Cliente ${clientPhone} asignado a usuario ${supportUserId}`);
             }
         } catch (error) {
             console.error('Error asignando cliente a usuario:', error);
