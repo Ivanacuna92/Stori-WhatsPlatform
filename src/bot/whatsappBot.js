@@ -185,46 +185,29 @@ class WhatsAppBot {
                 // Obtener el número del remitente
                 const from = msg.key.remoteJid;
                 const isGroup = from.endsWith('@g.us');
-                
+
+                // Ignorar mensajes de grupos
+                if (isGroup) {
+                    console.log('📛 Mensaje de grupo ignorado - Funcionalidad de grupos desactivada');
+                    return;
+                }
+
                 // Obtener el texto del mensaje
-                const conversation = msg.message.conversation || 
-                                   msg.message.extendedTextMessage?.text || 
+                const conversation = msg.message.conversation ||
+                                   msg.message.extendedTextMessage?.text ||
                                    '';
-                
+
                 // Ignorar mensajes sin texto
                 if (!conversation || conversation.trim() === '') {
                     console.log('Mensaje ignorado - Sin contenido de texto');
                     return;
                 }
-                
-                // Extraer información del usuario o grupo
-                let userId, userName, groupName;
 
-                if (isGroup) {
-                    // Para grupos: usar el ID del grupo como userId
-                    userId = from.replace('@g.us', '');
-                    groupName = 'Grupo'; // Nombre por defecto, se puede mejorar obteniendo metadata
-                    userName = msg.pushName || 'Participante';
+                // Solo chats privados
+                const userId = from.replace('@s.whatsapp.net', '');
+                const userName = msg.pushName || userId;
 
-                    // Obtener metadata del grupo para nombre real
-                    try {
-                        const groupMetadata = await this.sock.groupMetadata(from);
-                        groupName = groupMetadata.subject || 'Grupo sin nombre';
-                    } catch (error) {
-                        console.log('No se pudo obtener metadata del grupo:', error.message);
-                    }
-
-                    await logger.log('cliente', conversation, userId, groupName, isGroup);
-
-                    // Los grupos ahora funcionan igual que los chats privados
-                    // No se activa soporte automáticamente, el usuario decide si usar IA o modo manual
-                } else {
-                    // Para chats privados
-                    userId = from.replace('@s.whatsapp.net', '');
-                    userName = msg.pushName || userId;
-
-                    await logger.log('cliente', conversation, userId, userName, isGroup);
-                }
+                await logger.log('cliente', conversation, userId, userName, false);
 
                 // Verificar si está en modo humano o soporte
                 const isHuman = await humanModeManager.isHumanMode(userId);
@@ -236,20 +219,11 @@ class WhatsAppBot {
                     return;
                 }
 
-                // Verificar si la IA está desactivada para grupos
-                if (isGroup) {
-                    const groupsAIEnabled = await systemConfigService.isGroupsAIEnabled();
-                    if (!groupsAIEnabled) {
-                        await logger.log('SYSTEM', `Mensaje de grupo ignorado - IA en grupos desactivada (${groupName})`);
-                        return;
-                    }
-                } else {
-                    // Verificar si la IA está desactivada para chats individuales
-                    const individualAIEnabled = await systemConfigService.isIndividualAIEnabled();
-                    if (!individualAIEnabled) {
-                        await logger.log('SYSTEM', `Mensaje individual ignorado - IA individual desactivada (${userName})`);
-                        return;
-                    }
+                // Verificar si la IA está desactivada para chats individuales
+                const individualAIEnabled = await systemConfigService.isIndividualAIEnabled();
+                if (!individualAIEnabled) {
+                    await logger.log('SYSTEM', `Mensaje individual ignorado - IA individual desactivada (${userName})`);
+                    return;
                 }
 
                 // Si hay seguimiento activo, cancelarlo (el cliente respondió)
@@ -271,8 +245,7 @@ class WhatsAppBot {
                 // Enviar respuesta y capturar messageId
                 const sentMsg = await this.sock.sendMessage(from, { text: response });
                 const messageId = sentMsg?.key?.id;
-                const displayName = isGroup ? groupName : userName;
-                await logger.log('bot', response, userId, displayName, isGroup, null, null, messageId);
+                await logger.log('bot', response, userId, userName, false, null, null, messageId);
                 
             } catch (error) {
                 await this.handleError(error, m.messages[0]);
@@ -284,11 +257,8 @@ class WhatsAppBot {
         // Agregar mensaje del usuario a la sesión
         await sessionManager.addMessage(userId, 'user', userMessage, chatId);
 
-        // Determinar si es un grupo basándose en el chatId
-        const isGroup = chatId.endsWith('@g.us');
-
-        // Obtener el prompt apropiado según el tipo de chat
-        const systemPrompt = promptLoader.getPrompt(isGroup);
+        // Solo chats individuales (grupos están desactivados)
+        const systemPrompt = promptLoader.getPrompt(false);
 
         // Preparar mensajes para la IA
         const messages = [

@@ -248,29 +248,21 @@ class WhatsAppInstanceManager {
             const from = msg.key.remoteJid;
             const isGroup = from.endsWith('@g.us');
 
+            // Ignorar mensajes de grupos
+            if (isGroup) {
+                console.log('📛 Mensaje de grupo ignorado - Funcionalidad de grupos desactivada');
+                return;
+            }
+
             const conversation = msg.message.conversation ||
                                msg.message.extendedTextMessage?.text ||
                                '';
 
             if (!conversation || conversation.trim() === '') return;
 
-            let userId, userName, groupName;
-
-            if (isGroup) {
-                userId = from.replace('@g.us', '');
-                groupName = 'Grupo';
-                userName = msg.pushName || 'Participante';
-
-                try {
-                    const groupMetadata = await instanceData.sock.groupMetadata(from);
-                    groupName = groupMetadata.subject || 'Grupo sin nombre';
-                } catch (error) {
-                    console.log('No se pudo obtener metadata del grupo:', error.message);
-                }
-            } else {
-                userId = from.replace('@s.whatsapp.net', '');
-                userName = msg.pushName || userId;
-            }
+            // Solo chats individuales
+            const userId = from.replace('@s.whatsapp.net', '');
+            const userName = msg.pushName || userId;
 
             // VERIFICAR SI EL CLIENTE ESTÁ ASIGNADO A OTRO USUARIO DE SOPORTE
             const existingAssignment = await this.getClientAssignment(userId);
@@ -282,11 +274,10 @@ class WhatsAppInstanceManager {
             }
 
             // Log del mensaje
-            const displayName = isGroup ? groupName : userName;
-            await logger.log('cliente', conversation, userId, displayName, isGroup, supportUserId);
+            await logger.log('cliente', conversation, userId, userName, false, supportUserId);
 
-            // Asignar cliente a este usuario de soporte si no está asignado
-            await this.assignClientToUser(userId, supportUserId, isGroup, groupName);
+            // Asignar cliente a este usuario de soporte si no está asignado (solo chats individuales)
+            await this.assignClientToUser(userId, supportUserId, false, null);
 
             // Verificar modo humano/soporte
             const isHuman = await humanModeManager.isHumanMode(userId);
@@ -298,19 +289,11 @@ class WhatsAppInstanceManager {
                 return;
             }
 
-            // Verificar si la IA está desactivada
-            if (isGroup) {
-                const groupsAIEnabled = await systemConfigService.isGroupsAIEnabled();
-                if (!groupsAIEnabled) {
-                    await logger.log('SYSTEM', `Mensaje de grupo ignorado - IA en grupos desactivada (${groupName})`, supportUserId);
-                    return;
-                }
-            } else {
-                const individualAIEnabled = await systemConfigService.isIndividualAIEnabled();
-                if (!individualAIEnabled) {
-                    await logger.log('SYSTEM', `Mensaje individual ignorado - IA individual desactivada (${userName})`, supportUserId);
-                    return;
-                }
+            // Verificar si la IA está desactivada para chats individuales
+            const individualAIEnabled = await systemConfigService.isIndividualAIEnabled();
+            if (!individualAIEnabled) {
+                await logger.log('SYSTEM', `Mensaje individual ignorado - IA individual desactivada (${userName})`, supportUserId);
+                return;
             }
 
             // Cancelar seguimiento si existe
@@ -324,7 +307,7 @@ class WhatsAppInstanceManager {
             // Enviar respuesta
             const sentMsg = await instanceData.sock.sendMessage(from, { text: response });
             const messageId = sentMsg?.key?.id;
-            await logger.log('bot', response, userId, displayName, isGroup, supportUserId, null, messageId);
+            await logger.log('bot', response, userId, userName, false, supportUserId, null, messageId);
 
         } catch (error) {
             console.error(`Error procesando mensaje (Usuario ${supportUserId}):`, error);
