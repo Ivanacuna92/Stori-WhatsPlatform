@@ -71,14 +71,10 @@ function ChatPanel({ contact, onUpdateContact }) {
   const handleSend = async () => {
     if (!message.trim() || !contact || sending) return;
 
-    if (!contact.isHumanMode && contact.mode !== 'support') {
-      // No usar alert, simplemente no enviar
-      return;
-    }
-
+    // YA NO HAY VALIDACIÓN DE MODO - Siempre se puede enviar
     setSending(true);
     try {
-      await sendMyMessage(contact.phone, message, contact.isGroup);
+      await sendMyMessage(contact.phone, message); // Sin parámetro isGroup
       setMessage('');
       
       const newMessage = {
@@ -98,21 +94,6 @@ function ChatPanel({ contact, onUpdateContact }) {
     }
   };
 
-  const handleToggleMode = async () => {
-    try {
-      // Si está en modo soporte, cambiar a IA
-      if (contact.mode === 'support') {
-        await toggleHumanMode(contact.phone, false, 'ai');
-        onUpdateContact({ ...contact, isHumanMode: false, mode: 'ai' });
-      } else {
-        const newMode = !contact.isHumanMode;
-        await toggleHumanMode(contact.phone, newMode, newMode ? 'human' : 'ai');
-        onUpdateContact({ ...contact, isHumanMode: newMode, mode: newMode ? 'human' : 'ai' });
-      }
-    } catch (error) {
-      // Error silencioso
-    }
-  };
 
   const handleEndConversation = async () => {
     setEndingConversation(true);
@@ -158,11 +139,10 @@ function ChatPanel({ contact, onUpdateContact }) {
   }
 
 
+  // Solo hay modo humano y soporte (sin IA)
   const isSupport = contact.mode === 'support';
-  const isHuman = contact.isHumanMode;
-
-  const modeColor = isSupport ? '#F97316' : isHuman ? '#3B82F6' : '#00CC7B';
-  const modeLabel = isSupport ? 'Soporte' : isHuman ? 'Humano' : 'IA';
+  const modeColor = isSupport ? '#F97316' : '#3B82F6';
+  const modeLabel = isSupport ? 'Soporte' : 'Humano';
 
   return (
     <div className="flex-1 flex flex-col" style={{ background: '#FAFBFC' }}>
@@ -213,9 +193,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                 style={{
                   background: isSupport
                     ? 'rgba(249, 115, 22, 0.1)'
-                    : isHuman
-                      ? 'rgba(59, 130, 246, 0.1)'
-                      : 'rgba(92, 25, 227, 0.1)',
+                    : 'rgba(59, 130, 246, 0.1)',
                   color: modeColor
                 }}
               >
@@ -228,117 +206,43 @@ function ChatPanel({ contact, onUpdateContact }) {
           </div>
         </div>
 
-        {/* Botones de acción */}
+        {/* Botones de acción - Solo finalizar chat */}
         <div className="flex items-center gap-2">
-          {contact.leftGroup ? (
-            <span className="px-4 py-2 rounded-xl text-sm font-medium" style={{
-              background: 'rgba(107, 114, 128, 0.1)',
-              color: '#6B7280'
-            }}>
-              Grupo Abandonado
-            </span>
-          ) : isSupport ? (
-            <>
-              <button
-                className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
-                style={{
-                  background: 'rgba(249, 115, 22, 0.1)',
-                  color: '#F97316',
-                  border: '1px solid transparent'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.background = '#F97316';
-                  e.target.style.color = 'white';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(249, 115, 22, 0.1)';
-                  e.target.style.color = '#F97316';
-                }}
-                onClick={async () => {
-                  // Usar mode: 'ai' para cambiar explícitamente de soporte a IA
-                  await toggleHumanMode(contact.phone, false, 'ai');
-                  onUpdateContact({ ...contact, isHumanMode: false, mode: 'ai' });
-
-                  const transferMessage = "El soporte ha finalizado. Continuaré atendiéndote con mucho gusto. ¿Hay algo más en lo que pueda ayudarte?";
-                  await sendMyMessage(contact.phone, transferMessage, contact.isGroup);
-
-                  const newMessage = {
-                    type: 'BOT',
-                    message: transferMessage,
-                    timestamp: new Date().toISOString()
-                  };
-
-                  onUpdateContact({
-                    ...contact,
-                    messages: [...(contact.messages || []), newMessage],
-                    isHumanMode: false,
-                    mode: 'ai'
-                  });
-                }}
-                title="Regresar el control al bot"
-              >
-                Finalizar Soporte
-              </button>
-              <button
-                className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all"
-                style={{ background: '#EF4444' }}
-                onMouseEnter={(e) => e.target.style.background = '#DC2626'}
-                onMouseLeave={(e) => e.target.style.background = '#EF4444'}
-                onClick={() => setShowEndModal(true)}
-              >
-                Finalizar Chat
-              </button>
-            </>
-          ) : isHuman ? (
-            <>
-              <button
-                className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
-                style={{
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  color: '#3B82F6'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.background = '#3B82F6';
-                  e.target.style.color = 'white';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(59, 130, 246, 0.1)';
-                  e.target.style.color = '#3B82F6';
-                }}
-                onClick={handleToggleMode}
-              >
-                Activar IA
-              </button>
-              <button
-                className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all"
-                style={{ background: '#EF4444' }}
-                onMouseEnter={(e) => e.target.style.background = '#DC2626'}
-                onMouseLeave={(e) => e.target.style.background = '#EF4444'}
-                onClick={() => setShowEndModal(true)}
-              >
-                Finalizar Chat
-              </button>
-            </>
-          ) : (
+          {isSupport && (
             <button
               className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
               style={{
-                background: 'rgba(92, 25, 227, 0.1)',
-                color: '#00CC7B'
+                background: 'rgba(249, 115, 22, 0.1)',
+                color: '#F97316',
+                border: '1px solid transparent'
               }}
               onMouseEnter={(e) => {
-                e.target.style.background = '#00CC7B';
+                e.target.style.background = '#F97316';
                 e.target.style.color = 'white';
               }}
               onMouseLeave={(e) => {
-                e.target.style.background = 'rgba(92, 25, 227, 0.1)';
-                e.target.style.color = '#00CC7B';
+                e.target.style.background = 'rgba(249, 115, 22, 0.1)';
+                e.target.style.color = '#F97316';
               }}
-              onClick={handleToggleMode}
+              onClick={async () => {
+                // Cambiar de soporte a humano
+                await toggleHumanMode(contact.phone, true, 'human');
+                onUpdateContact({ ...contact, isHumanMode: true, mode: 'human' });
+              }}
+              title="Finalizar modo soporte"
             >
-              Modo Humano
+              Finalizar Soporte
             </button>
           )}
+          <button
+            className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all"
+            style={{ background: '#EF4444' }}
+            onMouseEnter={(e) => e.target.style.background = '#DC2626'}
+            onMouseLeave={(e) => e.target.style.background = '#EF4444'}
+            onClick={() => setShowEndModal(true)}
+          >
+            Finalizar Chat
+          </button>
 
           {/* Botón de menú de opciones (3 puntos) */}
           <div className="relative" ref={optionsMenuRef}>
@@ -567,8 +471,8 @@ function ChatPanel({ contact, onUpdateContact }) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={contact.isHumanMode || contact.mode === 'support' ? 'Escribe un mensaje...' : 'Activa MODO HUMANO para escribir'}
-            disabled={(!contact.isHumanMode && contact.mode !== 'support') || sending}
+            placeholder="Escribe un mensaje..."
+            disabled={sending}
             className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50"
             style={{
               background: '#F3F4F6',
@@ -589,7 +493,7 @@ function ChatPanel({ contact, onUpdateContact }) {
           />
           <button
             onClick={handleSend}
-            disabled={(!contact.isHumanMode && contact.mode !== 'support') || sending || !message.trim()}
+            disabled={sending || !message.trim()}
             className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: '#00CC7B'
@@ -666,7 +570,7 @@ function ChatPanel({ contact, onUpdateContact }) {
 
                     setShowSupportModal(false);
 
-                    await sendMyMessage(contact.phone, presentationMessage, contact.isGroup);
+                    await sendMyMessage(contact.phone, presentationMessage); // Sin parámetro isGroup
 
                     const newMessage = {
                       type: 'HUMAN',

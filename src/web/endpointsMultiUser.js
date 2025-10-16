@@ -264,15 +264,15 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         userName: log.userName
                     }));
 
-                    // Obtener modo actual
-                    const mode = humanModeManager.getMode(assignment.client_phone);
-                    const isHumanMode = mode === 'human' || mode === true;
-                    const isSupportMode = mode === 'support';
+                    // Obtener modo actual (solo humano o soporte, sin IA) - DEBE SER AWAIT
+                    const rawMode = await humanModeManager.getMode(assignment.client_phone);
+                    const mode = rawMode === 'support' ? 'support' : 'human'; // Solo 2 modos posibles
+                    const isHumanMode = mode === 'human';
 
                     return {
                         phone: assignment.client_phone,
                         name: assignment.group_name || assignment.client_phone,
-                        isGroup: assignment.is_group,
+                        isGroup: false, // Grupos desactivados
                         groupName: assignment.group_name,
                         messages: messages.reverse(), // Orden cronológico
                         totalMessages: messages.length,
@@ -280,7 +280,7 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         botMessages: messages.filter(m => m.type === 'BOT' || m.role === 'bot').length,
                         lastActivity: assignment.last_message_at,
                         isHumanMode,
-                        mode: isSupportMode ? 'support' : isHumanMode ? 'human' : 'ai',
+                        mode, // Siempre 'human' o 'support'
                         lastMessage: messages.length > 0 ? {
                             text: messages[messages.length - 1].message,
                             timestamp: messages[messages.length - 1].timestamp
@@ -299,29 +299,44 @@ module.exports = function(app, requireAuth, requireAdmin) {
     // Enviar mensaje desde la instancia del usuario actual
     app.post('/api/my-instance/send-message', requireAuth, async (req, res) => {
         try {
-            const { phone, message, isGroup } = req.body;
+            console.log('📨 [SEND-MESSAGE] Inicio - Usuario:', req.user.id, req.user.email);
+            console.log('📨 [SEND-MESSAGE] Body recibido:', JSON.stringify(req.body));
+
+            const { phone, message } = req.body;
 
             if (!phone || !message) {
+                console.log('❌ [SEND-MESSAGE] Falta phone o message');
                 return res.status(400).json({
                     error: 'Phone and message are required'
                 });
             }
 
+            console.log('📨 [SEND-MESSAGE] Phone:', phone, 'Message length:', message.length);
+
             const instanceManager = global.whatsappInstanceManager;
-            const chatId = isGroup ? `${phone}@g.us` : `${phone}@s.whatsapp.net`;
+            // Solo chats individuales (grupos desactivados)
+            const chatId = `${phone}@s.whatsapp.net`;
+
+            console.log('📨 [SEND-MESSAGE] ChatId formateado:', chatId);
+            console.log('📨 [SEND-MESSAGE] Llamando instanceManager.sendMessage...');
 
             await instanceManager.sendMessage(req.user.id, chatId, message);
 
-            // Registrar el mensaje
+            console.log('✅ [SEND-MESSAGE] Mensaje enviado exitosamente');
+
+            // Registrar el mensaje (isGroup siempre false)
             const logger = require('../services/logger');
-            await logger.log('soporte', message, phone, req.user.name, isGroup, req.user.id);
+            await logger.log('soporte', message, phone, req.user.name, false, req.user.id);
+
+            console.log('✅ [SEND-MESSAGE] Mensaje registrado en logs');
 
             res.json({
                 success: true,
                 message: 'Mensaje enviado correctamente'
             });
         } catch (error) {
-            console.error('Error enviando mensaje:', error);
+            console.error('❌ [SEND-MESSAGE] Error:', error.message);
+            console.error('❌ [SEND-MESSAGE] Stack:', error.stack);
             res.status(500).json({
                 error: 'Error enviando mensaje',
                 details: error.message

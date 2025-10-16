@@ -279,35 +279,14 @@ class WhatsAppInstanceManager {
             // Asignar cliente a este usuario de soporte si no está asignado (solo chats individuales)
             await this.assignClientToUser(userId, supportUserId, false, null);
 
-            // Verificar modo humano/soporte
-            const isHuman = await humanModeManager.isHumanMode(userId);
-            const isSupport = await humanModeManager.isSupportMode(userId);
-
-            if (isHuman || isSupport) {
-                const mode = isSupport ? 'SOPORTE' : 'HUMANO';
-                await logger.log('SYSTEM', `Mensaje ignorado - Modo ${mode} activo para ${userName} (${userId})`, supportUserId);
-                return;
-            }
-
-            // Verificar si la IA está desactivada para chats individuales
-            const individualAIEnabled = await systemConfigService.isIndividualAIEnabled();
-            if (!individualAIEnabled) {
-                await logger.log('SYSTEM', `Mensaje individual ignorado - IA individual desactivada (${userName})`, supportUserId);
-                return;
-            }
+            // YA NO HAY IA - Solo registrar el mensaje entrante
+            // Los humanos responderán manualmente desde el panel
+            await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId}) - Esperando respuesta humana`, supportUserId);
 
             // Cancelar seguimiento si existe
             if (followUpService.hasActiveFollowUp(userId)) {
                 await followUpService.cancelFollowUp(userId, 'Cliente respondió');
             }
-
-            // Procesar mensaje
-            const response = await this.processMessage(supportUserId, userId, conversation, from);
-
-            // Enviar respuesta
-            const sentMsg = await instanceData.sock.sendMessage(from, { text: response });
-            const messageId = sentMsg?.key?.id;
-            await logger.log('bot', response, userId, userName, false, supportUserId, null, messageId);
 
         } catch (error) {
             console.error(`Error procesando mensaje (Usuario ${supportUserId}):`, error);
@@ -487,17 +466,36 @@ class WhatsAppInstanceManager {
 
     // Enviar mensaje desde una instancia específica
     async sendMessage(supportUserId, to, message) {
+        console.log('📤 [INSTANCE-MANAGER] sendMessage - userId:', supportUserId, 'to:', to);
+
         const instanceData = this.instances.get(supportUserId);
-        if (!instanceData || !instanceData.sock) {
+
+        if (!instanceData) {
+            console.log('❌ [INSTANCE-MANAGER] No se encontró instancia para usuario:', supportUserId);
+            console.log('📋 [INSTANCE-MANAGER] Instancias disponibles:', Array.from(this.instances.keys()));
             throw new Error('Instancia no disponible');
         }
 
+        if (!instanceData.sock) {
+            console.log('❌ [INSTANCE-MANAGER] Instancia sin sock para usuario:', supportUserId);
+            throw new Error('Instancia no disponible');
+        }
+
+        console.log('📤 [INSTANCE-MANAGER] Estado de instancia:', instanceData.status);
+
         if (instanceData.status !== 'connected') {
+            console.log('❌ [INSTANCE-MANAGER] WhatsApp no conectado. Estado:', instanceData.status);
             throw new Error('WhatsApp no está conectado');
         }
 
-        const chatId = to.includes('@g.us') ? to : `${to}@s.whatsapp.net`;
-        return await instanceData.sock.sendMessage(chatId, { text: message });
+        const chatId = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        console.log('📤 [INSTANCE-MANAGER] ChatId final:', chatId);
+        console.log('📤 [INSTANCE-MANAGER] Enviando mensaje...');
+
+        const result = await instanceData.sock.sendMessage(chatId, { text: message });
+
+        console.log('✅ [INSTANCE-MANAGER] Mensaje enviado exitosamente');
+        return result;
     }
 
     // Obtener estado de instancia desde BD

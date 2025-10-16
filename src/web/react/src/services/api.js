@@ -535,11 +535,11 @@ export async function getMyContacts() {
   }
 }
 
-// Enviar mensaje desde mi instancia
-export async function sendMyMessage(phone, message, isGroup = false) {
+// Enviar mensaje desde mi instancia (sin parámetro isGroup, grupos desactivados)
+export async function sendMyMessage(phone, message) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-message`, {
     method: 'POST',
-    body: JSON.stringify({ phone, message, isGroup })
+    body: JSON.stringify({ phone, message }) // Solo phone y message
   });
 
   if (!response.ok) {
