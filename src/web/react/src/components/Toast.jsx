@@ -21,9 +21,9 @@ const Toast = ({ message, type = 'info', duration = 5000, onClose }) => {
   const styles = {
     success: {
       bg: 'bg-white',
-      border: 'border-green-200',
+      border: 'border-orange-200',
       icon: '✓',
-      iconBg: 'bg-green-500',
+      iconBg: 'bg-orange-500',
       text: 'text-gray-800'
     },
     error: {

@@ -178,8 +178,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             }}
             onFocus={(e) => {
               e.target.style.background = '#ffffff';
-              e.target.style.border = '1px solid #00CC7B';
-              e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+              e.target.style.border = '1px solid #f7c06f';
+              e.target.style.boxShadow = '0 0 0 3px rgba(247, 192, 111, 0.08)';
             }}
             onBlur={(e) => {
               e.target.style.background = '#F3F4F6';
@@ -201,13 +201,13 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               className="mb-1 rounded-xl cursor-pointer transition-all duration-200"
               style={{
                 background: selectedContact?.phone === contact.phone
-                  ? 'rgba(92, 25, 227, 0.08)'
+                  ? 'rgba(247, 192, 111, 0.08)'
                   : 'transparent',
                 boxShadow: selectedContact?.phone === contact.phone
-                  ? '0 2px 8px rgba(92, 25, 227, 0.15)'
+                  ? '0 2px 8px rgba(247, 192, 111, 0.15)'
                   : 'none',
                 border: selectedContact?.phone === contact.phone
-                  ? '1px solid rgba(92, 25, 227, 0.2)'
+                  ? '1px solid rgba(247, 192, 111, 0.2)'
                   : '1px solid transparent'
               }}
               onMouseEnter={(e) => {
@@ -263,7 +263,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                           ? '#F97316'
                           : contact.isHumanMode
                             ? '#3B82F6'
-                            : '#00CC7B',
+                            : '#f7c06f',
                         borderColor: selectedContact?.phone === contact.phone ? '#ffffff' : '#FAFBFC'
                       }}
                     ></div>
@@ -288,8 +288,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                         <>
                           {getUnreadCount(contact) > 0 && (
                             <span className="min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{
-                              background: '#00CC7B',
-                              boxShadow: '0 2px 4px rgba(92, 25, 227, 0.3)'
+                              background: '#f7c06f',
+                              boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
                             }}>
                               {getUnreadCount(contact) > 99 ? '99+' : getUnreadCount(contact)}
                             </span>

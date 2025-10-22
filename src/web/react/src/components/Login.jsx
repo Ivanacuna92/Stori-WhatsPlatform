@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { login } from '../services/api';
 import { ToastContainer } from './Toast';
 import { useToast } from '../hooks/useToast';
-import logoIcon from '../assets/icono_stori.png';
+import logoIcon from '../assets/ESAC_LOGO.png';
 
 function Login({ onLoginSuccess }) {
   const [formData, setFormData] = useState({
@@ -235,7 +235,7 @@ function Login({ onLoginSuccess }) {
 
           .mobile-input-large:focus {
             background: #ffffff !important;
-            border-color: #00CC7B !important;
+            border-color: #f7c06f !important;
             box-shadow: 0 0 0 3px rgba(0, 204, 123, 0.08) !important;
             outline: none !important;
           }
@@ -244,7 +244,7 @@ function Login({ onLoginSuccess }) {
             padding: 1.2rem !important;
             font-size: 1.1rem !important;
             font-weight: 500 !important;
-            background: #00CC7B !important;
+            background: #f7c06f !important;
             border: none !important;
             color: white !important;
             box-shadow: 0 4px 12px rgba(0, 204, 123, 0.2) !important;
@@ -253,7 +253,7 @@ function Login({ onLoginSuccess }) {
           }
 
           .mobile-button-large:hover {
-            background: #009958 !important;
+            background: #e5a84d !important;
             transform: translateY(-1px) !important;
             box-shadow: 0 6px 16px rgba(0, 204, 123, 0.3) !important;
           }
@@ -288,11 +288,11 @@ function Login({ onLoginSuccess }) {
         <div className="w-full max-w-sm mx-auto card-subtle rounded-2xl p-8 md:p-8 mobile-content-padding shadow-[0_4px_20px_rgba(0,0,0,0.08)] login-container">
           <div className="mobile-content">
             <div className="flex flex-col items-center mb-8 md:mb-8 space-y-3">
-              <div className="w-15 h-15 rounded-md flex items-center justify-center">
+              <div className="w-full flex items-center justify-center">
                 <img
                   src={logoIcon}
-                  alt="Stori CRM"
-                  className="w-24 h-16 md:w-24 md:h-16 mobile-logo-large object-contain"
+                  alt="ESAC CRM"
+                  className="w-48 h-32 md:w-56 md:h-36 mobile-logo-large object-contain"
                 />
               </div>
               <h1 className="text-3xl md:text-3xl mobile-title-large font-semibold text-gray-900 md:text-gray-900 mobile-text-dark">
@@ -318,7 +318,7 @@ function Login({ onLoginSuccess }) {
                     borderColor: '#E8EBED'
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = '#00CC7B';
+                    e.target.style.borderColor = '#f7c06f';
                     e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
                   }}
                   onBlur={(e) => {
@@ -346,7 +346,7 @@ function Login({ onLoginSuccess }) {
                       borderColor: '#E8EBED'
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = '#00CC7B';
+                      e.target.style.borderColor = '#f7c06f';
                       e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
                     }}
                     onBlur={(e) => {
@@ -362,10 +362,10 @@ function Login({ onLoginSuccess }) {
                     onClick={togglePassword}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 md:text-gray-400 mobile-text-dark transition-colors"
                     style={{
-                      color: showPassword ? '#00CC7B' : '#9CA3AF'
+                      color: showPassword ? '#f7c06f' : '#9CA3AF'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#00CC7B';
+                      e.currentTarget.style.color = '#f7c06f';
                     }}
                     onMouseLeave={(e) => {
                       if (!showPassword) {
@@ -398,16 +398,16 @@ function Login({ onLoginSuccess }) {
                 disabled={loading}
                 className="w-full text-white py-3 md:py-3 mobile-button-large rounded-xl transition-all text-sm md:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: '#00CC7B'
+                  background: '#f7c06f'
                 }}
                 onMouseEnter={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#009958';
+                    e.target.style.background = '#e5a84d';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#00CC7B';
+                    e.target.style.background = '#f7c06f';
                   }
                 }}
               >

@@ -19,7 +19,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
             <button
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
               style={{
-                background: currentView === 'dashboard' ? '#00CC7B' : 'transparent',
+                background: currentView === 'dashboard' ? '#f7c06f' : 'transparent',
                 color: currentView === 'dashboard' ? 'white' : '#6B7280'
               }}
               onMouseEnter={(e) => {
@@ -42,7 +42,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
           <button
             className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
             style={{
-              background: currentView === 'reports' ? '#00CC7B' : 'transparent',
+              background: currentView === 'reports' ? '#f7c06f' : 'transparent',
               color: currentView === 'reports' ? 'white' : '#6B7280'
             }}
             onMouseEnter={(e) => {
@@ -64,7 +64,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
           <button
             className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
             style={{
-              background: currentView === 'contacts' ? '#00CC7B' : 'transparent',
+              background: currentView === 'contacts' ? '#f7c06f' : 'transparent',
               color: currentView === 'contacts' ? 'white' : '#6B7280'
             }}
             onMouseEnter={(e) => {
@@ -87,7 +87,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
             <button
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
               style={{
-                background: currentView === 'users' ? '#00CC7B' : 'transparent',
+                background: currentView === 'users' ? '#f7c06f' : 'transparent',
                 color: currentView === 'users' ? 'white' : '#6B7280'
               }}
               onMouseEnter={(e) => {
@@ -110,7 +110,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
           <button
             className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
             style={{
-              background: currentView === 'session' ? '#00CC7B' : 'transparent',
+              background: currentView === 'session' ? '#f7c06f' : 'transparent',
               color: currentView === 'session' ? 'white' : '#6B7280'
             }}
             onMouseEnter={(e) => {
@@ -138,7 +138,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
               background: '#F3F4F6'
             }}>
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold" style={{
-                background: 'linear-gradient(135deg, #00CC7B 0%, #009958 100%)'
+                background: 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)'
               }}>
                 {user.name?.charAt(0).toUpperCase() || 'U'}
               </div>
