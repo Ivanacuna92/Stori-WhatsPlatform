@@ -1,5 +1,5 @@
 import React from 'react';
-import icono from '../assets/icono_stori.png';
+import icono from '../assets/ESAC_LOGO.png';
 
 function Header({ currentView, onViewChange, user, onLogout }) {
   return (
@@ -10,7 +10,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
       <div className="flex justify-between items-center relative">
         {/* Logo */}
         <div className="flex items-center">
-          <img src={icono} alt="Stori" className="h-8" />
+          <img src={icono} alt="ESAC" className="h-10" />
         </div>
 
         {/* Navegación - Centrada absolutamente */}
