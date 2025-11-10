@@ -183,11 +183,27 @@ class WhatsAppBot {
                 
                 // Obtener el número del remitente
                 const from = msg.key.remoteJid;
-                const isGroup = from.endsWith('@g.us');
 
-                // Ignorar mensajes de grupos
-                if (isGroup) {
-                    console.log('📛 Mensaje de grupo ignorado - Funcionalidad de grupos desactivada');
+                // Filtrar solo chats individuales (contactos directos)
+                // Ignorar: grupos, estados, canales, newsletters, broadcasts
+                const isGroup = from.endsWith('@g.us');
+                const isStatus = from === 'status@broadcast' || from.includes('broadcast');
+                const isNewsletter = from.includes('@newsletter');
+                const isChannel = from.includes('@channel');
+
+                // Solo procesar mensajes de contactos individuales (@s.whatsapp.net)
+                const isIndividualContact = from.endsWith('@s.whatsapp.net');
+
+                if (!isIndividualContact) {
+                    if (isGroup) {
+                        console.log('📛 Mensaje de grupo ignorado');
+                    } else if (isStatus) {
+                        console.log('📛 Estado/Broadcast ignorado');
+                    } else if (isNewsletter) {
+                        console.log('📛 Canal/Newsletter ignorado');
+                    } else {
+                        console.log('📛 Mensaje no individual ignorado:', from);
+                    }
                     return;
                 }
 
