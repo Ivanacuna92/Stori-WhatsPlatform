@@ -387,19 +387,40 @@ class WhatsAppInstanceManager {
             if (msg.key.fromMe) return;
 
             const from = msg.key.remoteJid;
-            const isGroup = from.endsWith('@g.us');
 
-            // Ignorar mensajes de grupos
-            if (isGroup) {
-                console.log('📛 Mensaje de grupo ignorado - Funcionalidad de grupos desactivada');
-                return;
+            // ===============================================
+            // FILTRO ESTRICTO: SOLO CONTACTOS INDIVIDUALES
+            // ===============================================
+            // Solo procesar mensajes de contactos directos (@s.whatsapp.net)
+            // IGNORAR TODO LO DEMÁS sin excepción
+
+            const isIndividualContact = from && from.endsWith('@s.whatsapp.net');
+
+            if (!isIndividualContact) {
+                // Identificar tipo de origen para logging
+                let tipo = 'desconocido';
+                if (from.endsWith('@g.us')) tipo = 'grupo';
+                else if (from === 'status@broadcast' || from.includes('broadcast')) tipo = 'estado/broadcast';
+                else if (from.includes('newsletter') || from.includes('@newsletter')) tipo = 'newsletter/canal';
+                else if (from.includes('@channel') || from.includes('channel')) tipo = 'canal';
+                else if (from.includes('@lid')) tipo = 'comunidad';
+                else if (from.includes('@g.')) tipo = 'grupo/comunidad';
+
+                console.log(`📛 Mensaje ignorado [${tipo}]: ${from}`);
+                return; // SALIR INMEDIATAMENTE - No procesar ni registrar nada
             }
+
+            // Si llegamos aquí, es un contacto individual válido (@s.whatsapp.net)
+            console.log(`✅ Mensaje de contacto individual: ${from}`);
 
             const conversation = msg.message.conversation ||
                                msg.message.extendedTextMessage?.text ||
                                '';
 
-            if (!conversation || conversation.trim() === '') return;
+            if (!conversation || conversation.trim() === '') {
+                console.log('Mensaje ignorado - Sin contenido de texto');
+                return;
+            }
 
             // Solo chats individuales
             const userId = from.replace('@s.whatsapp.net', '');
