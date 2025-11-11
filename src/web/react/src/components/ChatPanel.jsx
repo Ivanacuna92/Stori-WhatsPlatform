@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup } from '../services/api';
+import { sendMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, archiveConversation, unarchiveConversation } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MediaMessage from './MediaMessage';
@@ -18,6 +18,7 @@ function ChatPanel({ contact, onUpdateContact }) {
   const [leavingGroup, setLeavingGroup] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
+  const [archiving, setArchiving] = useState(false);
   const messagesEndRef = useRef(null);
   const optionsMenuRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -193,28 +194,57 @@ function ChatPanel({ contact, onUpdateContact }) {
 
   const handleEndConversation = async () => {
     setEndingConversation(true);
-    
+
     try {
       await endConversation(contact.phone);
-      
+
       // Agregar mensaje de sistema a la conversación
       const systemMessage = {
         type: 'SYSTEM',
         message: '⏰ Tu sesión de conversación ha finalizado. Puedes escribirme nuevamente para iniciar una nueva conversación.',
         timestamp: new Date().toISOString()
       };
-      
+
       onUpdateContact({
         ...contact,
         messages: [...(contact.messages || []), systemMessage],
         isHumanMode: false
       });
-      
+
       setShowEndModal(false);
       setEndingConversation(false);
     } catch (error) {
       setEndingConversation(false);
       alert('Error finalizando conversación: ' + error.message);
+    }
+  };
+
+  const handleArchiveConversation = async () => {
+    setArchiving(true);
+    setShowOptionsMenu(false);
+
+    try {
+      const isArchived = contact.isArchived;
+
+      if (isArchived) {
+        await unarchiveConversation(contact.phone);
+        onUpdateContact({
+          ...contact,
+          isArchived: false
+        });
+      } else {
+        await archiveConversation(contact.phone);
+        onUpdateContact({
+          ...contact,
+          isArchived: true
+        });
+        // Recargar para actualizar la lista
+        setTimeout(() => window.location.reload(), 500);
+      }
+    } catch (error) {
+      alert('Error archivando conversación: ' + error.message);
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -373,6 +403,28 @@ function ChatPanel({ contact, onUpdateContact }) {
                 boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
               }}>
                 <div className="py-1">
+                  <button
+                    onClick={handleArchiveConversation}
+                    disabled={archiving}
+                    className="w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-all disabled:opacity-50"
+                    style={{ color: '#6B7280' }}
+                    onMouseEnter={(e) => {
+                      if (!archiving) {
+                        e.target.style.background = '#F3F4F6';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!archiving) {
+                        e.target.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                    <span>{contact.isArchived ? 'Desarchivar' : 'Archivar conversación'}</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       setShowOptionsMenu(false);

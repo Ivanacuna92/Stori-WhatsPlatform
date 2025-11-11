@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { getMyContacts, toggleHumanMode } from '../services/api';
+import { getMyContacts, toggleHumanMode, getArchivedConversations } from '../services/api';
 
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedUserIds, setArchivedUserIds] = useState(new Set());
   const [lastReadMessages, setLastReadMessages] = useState(() => {
     // Cargar del localStorage al iniciar
     const saved = localStorage.getItem('lastReadMessages');
@@ -23,33 +25,47 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
 
   const loadContacts = async () => {
     try {
-      const data = await getMyContacts();
+      const [data, archivedData] = await Promise.all([
+        getMyContacts(),
+        getArchivedConversations()
+      ]);
+
+      // Crear set de IDs archivados
+      const archived = new Set(archivedData.map(a => a.userId));
+      setArchivedUserIds(archived);
+
+      // Marcar contactos como archivados
+      const contactsWithArchiveStatus = data.map(contact => ({
+        ...contact,
+        isArchived: archived.has(contact.phone)
+      }));
 
       // Actualizar solo si hay cambios reales
       setContacts(prevContacts => {
         // Si no hay contactos previos, actualizar
-        if (prevContacts.length === 0) return data;
+        if (prevContacts.length === 0) return contactsWithArchiveStatus;
 
         // Comparar si hay cambios reales
-        const hasChanges = data.some(newContact => {
+        const hasChanges = contactsWithArchiveStatus.some(newContact => {
           const oldContact = prevContacts.find(c => c.phone === newContact.phone);
           if (!oldContact) return true; // Contacto nuevo
 
-          // Verificar si hay cambios en mensajes o estado
+          // Verificar si hay cambios en mensajes, estado o archivado
           return (
             oldContact.messages.length !== newContact.messages.length ||
             oldContact.mode !== newContact.mode ||
-            oldContact.isHumanMode !== newContact.isHumanMode
+            oldContact.isHumanMode !== newContact.isHumanMode ||
+            oldContact.isArchived !== newContact.isArchived
           );
         });
 
         // Solo actualizar si hay cambios
-        return hasChanges ? data : prevContacts;
+        return hasChanges ? contactsWithArchiveStatus : prevContacts;
       });
 
       // Si hay un contacto seleccionado, actualizar sus mensajes solo si hay cambios
       if (selectedContact) {
-        const updatedContact = data.find(c => c.phone === selectedContact.phone);
+        const updatedContact = contactsWithArchiveStatus.find(c => c.phone === selectedContact.phone);
         if (updatedContact) {
           // Detectar cambios en cantidad de mensajes
           const hasNewMessages =
@@ -115,6 +131,14 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
 
   const filteredContacts = contacts
     .filter(contact => {
+      // Filtrar por archivado: mostrar archivados solo si showArchived es true
+      if (!showArchived && contact.isArchived) {
+        return false;
+      }
+      if (showArchived && !contact.isArchived) {
+        return false;
+      }
+
       const searchLower = searchTerm.toLowerCase();
 
       // Buscar en el número de teléfono o nombre de grupo
@@ -160,7 +184,35 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     }}>
       {/* Header estilo moderno */}
       <div className="p-6 pb-4">
-        <h2 className="text-base font-semibold text-gray-800 mb-4">Conversaciones</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-gray-800">
+            {showArchived ? 'Archivadas' : 'Conversaciones'}
+          </h2>
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+            style={{
+              background: showArchived ? 'rgba(247, 192, 111, 0.1)' : '#F3F4F6',
+              color: showArchived ? '#f7c06f' : '#6B7280',
+              border: showArchived ? '1px solid rgba(247, 192, 111, 0.3)' : '1px solid transparent'
+            }}
+            onMouseEnter={(e) => {
+              if (!showArchived) {
+                e.target.style.background = '#E8EBED';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!showArchived) {
+                e.target.style.background = '#F3F4F6';
+              }
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            <span>{showArchived ? 'Ver activos' : `Archivadas (${archivedUserIds.size})`}</span>
+          </button>
+        </div>
 
         <div className="relative">
           <svg className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

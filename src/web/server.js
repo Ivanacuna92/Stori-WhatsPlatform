@@ -12,6 +12,7 @@ const csvService = require('../services/csvService');
 const systemConfigService = require('../services/systemConfigService');
 const promptLoader = require('../services/promptLoader');
 const mediaService = require('../services/mediaService');
+const archiveService = require('../services/archiveService');
 const { requireAuth, requireAdmin, requireSupportOrAdmin } = require('../middleware/auth');
 const ViteExpress = require('vite-express');
 
@@ -1017,6 +1018,93 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 console.error('Error finalizando conversación:', error);
                 res.status(500).json({
                     error: 'Error al finalizar conversación',
+                    details: error.message
+                });
+            }
+        });
+
+        // API endpoint para archivar conversación
+        this.app.post('/api/archive-conversation', requireAuth, async (req, res) => {
+            try {
+                const { phone } = req.body;
+
+                if (!phone) {
+                    return res.status(400).json({
+                        error: 'Phone is required',
+                        details: 'Debe proporcionar el teléfono'
+                    });
+                }
+
+                // Limpiar el número de teléfono
+                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+
+                // Archivar conversación
+                const userId = req.user?.id || null;
+                await archiveService.archiveConversation(cleanPhone, userId);
+
+                // Registrar el evento
+                logger.log('SYSTEM', `Conversación archivada: ${cleanPhone}`, cleanPhone);
+
+                res.json({
+                    success: true,
+                    message: 'Conversación archivada correctamente',
+                    phone: cleanPhone
+                });
+
+            } catch (error) {
+                console.error('Error archivando conversación:', error);
+                res.status(500).json({
+                    error: 'Error al archivar conversación',
+                    details: error.message
+                });
+            }
+        });
+
+        // API endpoint para desarchivar conversación
+        this.app.post('/api/unarchive-conversation', requireAuth, async (req, res) => {
+            try {
+                const { phone } = req.body;
+
+                if (!phone) {
+                    return res.status(400).json({
+                        error: 'Phone is required',
+                        details: 'Debe proporcionar el teléfono'
+                    });
+                }
+
+                // Limpiar el número de teléfono
+                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+
+                // Desarchivar conversación
+                await archiveService.unarchiveConversation(cleanPhone);
+
+                // Registrar el evento
+                logger.log('SYSTEM', `Conversación desarchivada: ${cleanPhone}`, cleanPhone);
+
+                res.json({
+                    success: true,
+                    message: 'Conversación desarchivada correctamente',
+                    phone: cleanPhone
+                });
+
+            } catch (error) {
+                console.error('Error desarchivando conversación:', error);
+                res.status(500).json({
+                    error: 'Error al desarchivar conversación',
+                    details: error.message
+                });
+            }
+        });
+
+        // API endpoint para obtener conversaciones archivadas
+        this.app.get('/api/archived-conversations', requireAuth, async (req, res) => {
+            try {
+                const archived = await archiveService.getArchivedConversations();
+                res.json(archived);
+            } catch (error) {
+                console.error('Error obteniendo conversaciones archivadas:', error);
+                res.status(500).json({
+                    error: 'Error obteniendo conversaciones archivadas',
                     details: error.message
                 });
             }

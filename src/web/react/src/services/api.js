@@ -170,6 +170,44 @@ export async function leaveGroup(phone) {
   return response.json();
 }
 
+export async function archiveConversation(phone) {
+  const response = await fetchWithCredentials(`${API_BASE}/archive-conversation`, {
+    method: 'POST',
+    body: JSON.stringify({ phone })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Error archivando conversación');
+  }
+
+  return response.json();
+}
+
+export async function unarchiveConversation(phone) {
+  const response = await fetchWithCredentials(`${API_BASE}/unarchive-conversation`, {
+    method: 'POST',
+    body: JSON.stringify({ phone })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || 'Error desarchivando conversación');
+  }
+
+  return response.json();
+}
+
+export async function getArchivedConversations() {
+  const response = await fetchWithCredentials(`${API_BASE}/archived-conversations`);
+
+  if (!response.ok) {
+    throw new Error('Error obteniendo conversaciones archivadas');
+  }
+
+  return response.json();
+}
+
 function processContactsFromLogs(logs, humanStates) {
   const contacts = {};
   
