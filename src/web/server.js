@@ -1288,6 +1288,117 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             }
         });
 
+        // ===== ENDPOINTS DE DIAGNÓSTICO =====
+
+        // Obtener estado de todas las instancias
+        this.app.get('/api/diagnostic/instances', requireAdmin, (req, res) => {
+            try {
+                const instanceManager = global.whatsappInstanceManager;
+                if (!instanceManager) {
+                    return res.status(503).json({ error: 'Instance manager no disponible' });
+                }
+
+                const instances = instanceManager.getInstances();
+                const reconnectQueue = Array.from(instanceManager.reconnectQueue.entries()).map(([userId, data]) => ({
+                    userId,
+                    scheduledAt: data.scheduledAt,
+                    attemptNumber: data.attemptNumber,
+                    timeRemaining: Math.max(0, (data.scheduledAt + instanceManager.calculateBackoffDelay(data.attemptNumber)) - Date.now())
+                }));
+
+                res.json({
+                    instances,
+                    reconnectQueue,
+                    globalReconnectCount: instanceManager.globalReconnectCount,
+                    maxGlobalReconnects: instanceManager.maxGlobalReconnects,
+                    lastGlobalReconnectReset: instanceManager.lastGlobalReconnectReset,
+                    globalReconnectWindow: instanceManager.globalReconnectWindow,
+                    timeUntilGlobalReset: Math.max(0, (instanceManager.lastGlobalReconnectReset + instanceManager.globalReconnectWindow) - Date.now())
+                });
+            } catch (error) {
+                console.error('Error obteniendo diagnóstico:', error);
+                res.status(500).json({ error: 'Error obteniendo diagnóstico' });
+            }
+        });
+
+        // Limpiar sesión corrupta de un usuario específico
+        this.app.post('/api/diagnostic/clean-session/:userId', requireAdmin, async (req, res) => {
+            try {
+                const { userId } = req.params;
+                const instanceManager = global.whatsappInstanceManager;
+
+                if (!instanceManager) {
+                    return res.status(503).json({ error: 'Instance manager no disponible' });
+                }
+
+                // Detener instancia si existe
+                await instanceManager.stopInstance(parseInt(userId));
+
+                // Limpiar archivos de sesión
+                const fs = require('fs').promises;
+                const path = require('path');
+                const authPath = path.join(process.cwd(), 'auth_baileys', `user_${userId}`);
+
+                try {
+                    await fs.rm(authPath, { recursive: true, force: true });
+                    console.log(`🧹 Sesión limpiada para usuario ${userId}`);
+                } catch (err) {
+                    console.log('No había sesión o ya fue eliminada');
+                }
+
+                res.json({
+                    success: true,
+                    message: `Sesión limpiada para usuario ${userId}. Puede reiniciar la instancia ahora.`
+                });
+            } catch (error) {
+                console.error('Error limpiando sesión:', error);
+                res.status(500).json({ error: 'Error limpiando sesión' });
+            }
+        });
+
+        // Resetear contador global de reconexiones manualmente
+        this.app.post('/api/diagnostic/reset-global-counter', requireAdmin, (req, res) => {
+            try {
+                const instanceManager = global.whatsappInstanceManager;
+                if (!instanceManager) {
+                    return res.status(503).json({ error: 'Instance manager no disponible' });
+                }
+
+                instanceManager.globalReconnectCount = 0;
+                instanceManager.lastGlobalReconnectReset = Date.now();
+
+                res.json({
+                    success: true,
+                    message: 'Contador global de reconexiones reseteado'
+                });
+            } catch (error) {
+                console.error('Error reseteando contador:', error);
+                res.status(500).json({ error: 'Error reseteando contador' });
+            }
+        });
+
+        // Cancelar reconexión programada de un usuario
+        this.app.post('/api/diagnostic/cancel-reconnect/:userId', requireAdmin, (req, res) => {
+            try {
+                const { userId } = req.params;
+                const instanceManager = global.whatsappInstanceManager;
+
+                if (!instanceManager) {
+                    return res.status(503).json({ error: 'Instance manager no disponible' });
+                }
+
+                instanceManager.cancelScheduledReconnect(parseInt(userId));
+
+                res.json({
+                    success: true,
+                    message: `Reconexión cancelada para usuario ${userId}`
+                });
+            } catch (error) {
+                console.error('Error cancelando reconexión:', error);
+                res.status(500).json({ error: 'Error cancelando reconexión' });
+            }
+        });
+
         // ===== ENDPOINTS MULTI-USUARIO E INSTANCIAS =====
         const multiUserEndpoints = require('./endpointsMultiUser');
         multiUserEndpoints(this.app, requireAuth, requireAdmin);

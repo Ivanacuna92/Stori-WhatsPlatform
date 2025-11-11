@@ -16,6 +16,11 @@ const fs = require('fs').promises;
 class WhatsAppInstanceManager {
     constructor() {
         this.instances = new Map(); // Map<supportUserId, instanceData>
+        this.reconnectQueue = new Map(); // Map<supportUserId, queueData>
+        this.globalReconnectCount = 0;
+        this.maxGlobalReconnects = 10; // Límite global para evitar ciclos infinitos
+        this.lastGlobalReconnectReset = Date.now();
+        this.globalReconnectWindow = 60000; // Resetear contador cada 60 segundos
     }
 
     // Obtener todas las instancias activas
@@ -34,19 +39,96 @@ class WhatsAppInstanceManager {
         return this.instances.get(supportUserId);
     }
 
+    // Resetear contador global si ha pasado el tiempo de ventana
+    resetGlobalReconnectCountIfNeeded() {
+        const now = Date.now();
+        if (now - this.lastGlobalReconnectReset > this.globalReconnectWindow) {
+            console.log('🔄 Reseteando contador global de reconexiones');
+            this.globalReconnectCount = 0;
+            this.lastGlobalReconnectReset = now;
+        }
+    }
+
+    // Calcular delay con backoff exponencial
+    calculateBackoffDelay(attemptNumber) {
+        const baseDelay = 3000; // 3 segundos base
+        const maxDelay = 60000; // 60 segundos máximo
+        const delay = Math.min(baseDelay * Math.pow(2, attemptNumber - 1), maxDelay);
+        return delay;
+    }
+
+    // Agregar a cola de reconexión con backoff
+    scheduleReconnect(supportUserId, instanceName, attemptNumber) {
+        // Prevenir múltiples reconexiones en cola para el mismo usuario
+        if (this.reconnectQueue.has(supportUserId)) {
+            console.log(`⚠️  Usuario ${supportUserId} ya tiene una reconexión programada`);
+            return;
+        }
+
+        const delay = this.calculateBackoffDelay(attemptNumber);
+        console.log(`⏰ Reconexión programada para usuario ${supportUserId} en ${delay/1000}s (intento ${attemptNumber})`);
+
+        const timeoutId = setTimeout(async () => {
+            this.reconnectQueue.delete(supportUserId);
+            await this.startInstance(supportUserId, instanceName);
+        }, delay);
+
+        this.reconnectQueue.set(supportUserId, {
+            timeoutId,
+            scheduledAt: Date.now(),
+            attemptNumber
+        });
+    }
+
+    // Cancelar reconexión programada
+    cancelScheduledReconnect(supportUserId) {
+        const queueData = this.reconnectQueue.get(supportUserId);
+        if (queueData) {
+            clearTimeout(queueData.timeoutId);
+            this.reconnectQueue.delete(supportUserId);
+            console.log(`❌ Reconexión cancelada para usuario ${supportUserId}`);
+        }
+    }
+
     // Crear/iniciar instancia para un usuario
     async startInstance(supportUserId, instanceName) {
         try {
+            // Resetear contador global si es necesario
+            this.resetGlobalReconnectCountIfNeeded();
+
+            // Verificar límite global de reconexiones
+            if (this.globalReconnectCount >= this.maxGlobalReconnects) {
+                console.log(`🛑 LÍMITE GLOBAL de reconexiones alcanzado (${this.globalReconnectCount}/${this.maxGlobalReconnects})`);
+                console.log(`⏳ Esperando ${this.globalReconnectWindow/1000}s antes de permitir más reconexiones`);
+                return null;
+            }
+
             console.log(`🚀 Iniciando instancia de WhatsApp para usuario ${supportUserId}...`);
 
             // Verificar si ya existe una instancia activa
             if (this.instances.has(supportUserId)) {
                 const existing = this.instances.get(supportUserId);
+
+                // Si está conectada, no hacer nada
                 if (existing.status === 'connected') {
                     console.log(`✅ Instancia ya conectada para usuario ${supportUserId}`);
                     return existing;
                 }
-                // Si existe pero no está conectada, la cerramos primero
+
+                // Si está en proceso de reconexión, no reintentar
+                if (existing.isReconnecting) {
+                    console.log(`⏳ Instancia ya está reconectando para usuario ${supportUserId}`);
+                    return existing;
+                }
+
+                // Si está desconectada y tiene reconexión programada, no hacer nada
+                if (this.reconnectQueue.has(supportUserId)) {
+                    console.log(`⏳ Reconexión ya programada para usuario ${supportUserId}`);
+                    return existing;
+                }
+
+                // Si existe pero está desconectada y SIN reconexión programada, la cerramos primero
+                console.log(`🔄 Cerrando instancia desconectada para usuario ${supportUserId}`);
                 await this.stopInstance(supportUserId);
             }
 
@@ -165,25 +247,37 @@ class WhatsAppInstanceManager {
 
             if (statusCode === 405 || statusCode === 401 || statusCode === 403) {
                 instanceData.reconnectAttempts++;
+                this.globalReconnectCount++;
 
                 if (instanceData.reconnectAttempts > instanceData.maxReconnectAttempts) {
                     console.log(`❌ Máximo de intentos alcanzado para usuario ${supportUserId}`);
                     instanceData.isReconnecting = false;
+                    await logger.log('ERROR', `Instancia ${supportUserId} alcanzó límite de reconexiones`, supportUserId);
                     return;
                 }
 
-                console.log(`🔄 Limpiando sesión para usuario ${supportUserId}...`);
+                console.log(`🔄 Limpiando sesión para usuario ${supportUserId}... (Intento ${instanceData.reconnectAttempts}/${instanceData.maxReconnectAttempts})`);
                 await this.clearSession(authPath);
 
                 instanceData.isReconnecting = false;
-                setTimeout(() => this.startInstance(supportUserId, instanceData.instanceName), 5000);
+
+                // Usar backoff exponencial en lugar de delay fijo
+                this.scheduleReconnect(supportUserId, instanceData.instanceName, instanceData.reconnectAttempts);
             } else if (shouldReconnect && statusCode !== DisconnectReason.loggedOut) {
                 instanceData.reconnectAttempts = 0;
                 instanceData.isReconnecting = false;
-                setTimeout(() => this.startInstance(supportUserId, instanceData.instanceName), 5000);
+                this.globalReconnectCount++;
+
+                // Usar backoff exponencial
+                this.scheduleReconnect(supportUserId, instanceData.instanceName, 1);
+            } else {
+                instanceData.isReconnecting = false;
             }
         } else if (connection === 'open') {
             console.log(`✅ WhatsApp conectado para usuario ${supportUserId}`);
+
+            // Cancelar cualquier reconexión programada
+            this.cancelScheduledReconnect(supportUserId);
 
             instanceData.status = 'connected';
             instanceData.qr = null;
@@ -377,6 +471,9 @@ class WhatsAppInstanceManager {
             if (!instanceData) return;
 
             console.log(`🛑 Deteniendo instancia para usuario ${supportUserId}...`);
+
+            // Cancelar cualquier reconexión programada
+            this.cancelScheduledReconnect(supportUserId);
 
             if (instanceData.sock) {
                 instanceData.sock.end();
