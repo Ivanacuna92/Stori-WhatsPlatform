@@ -190,6 +190,7 @@ class WhatsAppBot {
                 // Solo procesar mensajes de contactos directos (@s.whatsapp.net)
                 // IGNORAR TODO LO DEMÁS sin excepción
 
+                // Verificar primero si NO es un contacto individual antes de cualquier procesamiento
                 const isIndividualContact = from && from.endsWith('@s.whatsapp.net');
 
                 if (!isIndividualContact) {
@@ -197,13 +198,13 @@ class WhatsAppBot {
                     let tipo = 'desconocido';
                     if (from.endsWith('@g.us')) tipo = 'grupo';
                     else if (from === 'status@broadcast' || from.includes('broadcast')) tipo = 'estado/broadcast';
-                    else if (from.includes('@newsletter')) tipo = 'canal/newsletter';
-                    else if (from.includes('@channel')) tipo = 'canal';
+                    else if (from.includes('newsletter') || from.includes('@newsletter')) tipo = 'newsletter/canal';
+                    else if (from.includes('@channel') || from.includes('channel')) tipo = 'canal';
                     else if (from.includes('@lid')) tipo = 'comunidad';
                     else if (from.includes('@g.')) tipo = 'grupo/comunidad';
 
                     console.log(`📛 Mensaje ignorado [${tipo}]: ${from}`);
-                    return; // SALIR - No procesar nada que no sea contacto individual
+                    return; // SALIR INMEDIATAMENTE - No procesar ni registrar nada
                 }
 
                 // Si llegamos aquí, es un contacto individual válido (@s.whatsapp.net)
