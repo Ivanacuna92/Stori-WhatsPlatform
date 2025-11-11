@@ -156,7 +156,7 @@ class WhatsAppInstanceManager {
                 defaultQueryTimeoutMs: undefined,
                 connectTimeoutMs: 60000,
                 keepAliveIntervalMs: 30000,
-                qrTimeout: undefined,
+                qrTimeout: 300000, // 5 minutos (300,000 ms) - aumentado de ~2-3 min
                 markOnlineOnConnect: false,
                 msgRetryCounterCache: new Map(),
                 retryRequestDelayMs: 250,
@@ -173,7 +173,11 @@ class WhatsAppInstanceManager {
                 phone: null,
                 reconnectAttempts: 0,
                 maxReconnectAttempts: 3,
-                isReconnecting: false
+                isReconnecting: false,
+                hasBeenConnected: false, // Flag para saber si alguna vez tuvo sesión válida
+                firstQrGenerated: false, // Flag para loguear solo el primer QR
+                qrRegenerationAttempts: 0, // Contador de regeneraciones de QR
+                maxQrRegenerations: 10 // Máximo de veces que regeneramos QR automáticamente
             };
 
             this.instances.set(supportUserId, instanceData);
@@ -217,13 +221,19 @@ class WhatsAppInstanceManager {
         if (!instanceData) return;
 
         if (qr) {
-            console.log(`📱 QR generado para usuario ${supportUserId}`);
+            // Solo loguear el PRIMER QR generado (WhatsApp regenera QR cada ~30-60s)
+            if (!instanceData.firstQrGenerated) {
+                console.log(`📱 QR generado para usuario ${supportUserId} - Disponible en panel web`);
+                instanceData.firstQrGenerated = true;
+            }
+
             instanceData.qr = qr;
             instanceData.status = 'qr_ready';
 
-            qrcode.generate(qr, { small: true });
+            // NO imprimir QR en terminal - disponible en panel web y BD
+            // qrcode.generate(qr, { small: true });
 
-            // Actualizar en BD
+            // Actualizar en BD (silenciosamente, WhatsApp regenera QRs automáticamente)
             await this.updateInstanceInDB(supportUserId, {
                 qr_code: qr,
                 status: 'qr_ready',
@@ -235,7 +245,7 @@ class WhatsAppInstanceManager {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            console.log(`❌ Conexión cerrada para usuario ${supportUserId}. Código: ${statusCode}`);
+            console.log(`❌ Conexión cerrada para usuario ${supportUserId}. Código: ${statusCode}, Estado: ${instanceData.status}, Ha estado conectado: ${instanceData.hasBeenConnected}`);
 
             instanceData.status = 'disconnected';
             instanceData.qr = null;
@@ -245,7 +255,36 @@ class WhatsAppInstanceManager {
                 qr_code: null
             });
 
+            // CASO ESPECIAL: Timeout 408 en usuarios SIN sesión (esperando QR)
+            if (statusCode === 408 && !instanceData.hasBeenConnected) {
+                instanceData.qrRegenerationAttempts++;
+
+                if (instanceData.qrRegenerationAttempts > instanceData.maxQrRegenerations) {
+                    console.log(`⏸️  Usuario ${supportUserId} alcanzó límite de regeneraciones de QR (${instanceData.maxQrRegenerations}). Deteniendo.`);
+                    instanceData.isReconnecting = false;
+                    return;
+                }
+
+                console.log(`🔄 Regenerando QR para usuario ${supportUserId} (Intento ${instanceData.qrRegenerationAttempts}/${instanceData.maxQrRegenerations})`);
+                instanceData.isReconnecting = false;
+                instanceData.firstQrGenerated = false; // Permitir loguear el nuevo QR
+
+                // Regenerar QR después de 10 segundos
+                this.scheduleReconnect(supportUserId, instanceData.instanceName, 1);
+                return;
+            }
+
+            // REGLA PRINCIPAL: Solo reconectar si la instancia ALGUNA VEZ tuvo una sesión válida conectada
+            if (!instanceData.hasBeenConnected) {
+                console.log(`⏸️  Usuario ${supportUserId} nunca ha tenido sesión conectada - NO reconectar (esperando escaneo QR)`);
+                instanceData.isReconnecting = false;
+                return;
+            }
+
+            // Si llegamos aquí, la instancia SÍ tuvo sesión válida antes - proceder con lógica de reconexión
+
             if (statusCode === 405 || statusCode === 401 || statusCode === 403) {
+                // Errores de autenticación en sesión previamente válida
                 instanceData.reconnectAttempts++;
                 this.globalReconnectCount++;
 
@@ -260,10 +299,13 @@ class WhatsAppInstanceManager {
                 await this.clearSession(authPath);
 
                 instanceData.isReconnecting = false;
+                instanceData.hasBeenConnected = false; // Resetear flag porque limpiamos sesión
 
-                // Usar backoff exponencial en lugar de delay fijo
+                // Usar backoff exponencial
                 this.scheduleReconnect(supportUserId, instanceData.instanceName, instanceData.reconnectAttempts);
             } else if (shouldReconnect && statusCode !== DisconnectReason.loggedOut) {
+                // Desconexión inesperada de sesión válida
+                console.log(`🔄 Reconectando usuario ${supportUserId} - desconexión inesperada de sesión activa`);
                 instanceData.reconnectAttempts = 0;
                 instanceData.isReconnecting = false;
                 this.globalReconnectCount++;
@@ -271,6 +313,8 @@ class WhatsAppInstanceManager {
                 // Usar backoff exponencial
                 this.scheduleReconnect(supportUserId, instanceData.instanceName, 1);
             } else {
+                // No reconectar en otros casos
+                console.log(`⏸️  Usuario ${supportUserId} - No se cumplieron condiciones para reconectar`);
                 instanceData.isReconnecting = false;
             }
         } else if (connection === 'open') {
@@ -282,7 +326,10 @@ class WhatsAppInstanceManager {
             instanceData.status = 'connected';
             instanceData.qr = null;
             instanceData.reconnectAttempts = 0;
+            instanceData.qrRegenerationAttempts = 0; // Resetear contador de QR
             instanceData.isReconnecting = false;
+            instanceData.hasBeenConnected = true; // Marcar que tuvo sesión válida
+            instanceData.firstQrGenerated = false; // Resetear para futuras desconexiones
 
             // Obtener número de teléfono
             const phoneNumber = instanceData.sock.user?.id?.split(':')[0] || null;
