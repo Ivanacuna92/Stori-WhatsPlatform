@@ -171,41 +171,43 @@ class WhatsAppBot {
             try {
                 const msg = m.messages[0];
                 if (!msg.message) return;
-                
+
                 // Log para debugging
                 console.log('Mensaje recibido - fromMe:', msg.key.fromMe, 'remoteJid:', msg.key.remoteJid);
-                
+
                 // Ignorar mensajes propios
                 if (msg.key.fromMe) {
                     console.log('Ignorando mensaje propio');
                     return;
                 }
-                
+
                 // Obtener el número del remitente
                 const from = msg.key.remoteJid;
 
-                // Filtrar solo chats individuales (contactos directos)
-                // Ignorar: grupos, estados, canales, newsletters, broadcasts
-                const isGroup = from.endsWith('@g.us');
-                const isStatus = from === 'status@broadcast' || from.includes('broadcast');
-                const isNewsletter = from.includes('@newsletter');
-                const isChannel = from.includes('@channel');
+                // ===============================================
+                // FILTRO ESTRICTO: SOLO CONTACTOS INDIVIDUALES
+                // ===============================================
+                // Solo procesar mensajes de contactos directos (@s.whatsapp.net)
+                // IGNORAR TODO LO DEMÁS sin excepción
 
-                // Solo procesar mensajes de contactos individuales (@s.whatsapp.net)
-                const isIndividualContact = from.endsWith('@s.whatsapp.net');
+                const isIndividualContact = from && from.endsWith('@s.whatsapp.net');
 
                 if (!isIndividualContact) {
-                    if (isGroup) {
-                        console.log('📛 Mensaje de grupo ignorado');
-                    } else if (isStatus) {
-                        console.log('📛 Estado/Broadcast ignorado');
-                    } else if (isNewsletter) {
-                        console.log('📛 Canal/Newsletter ignorado');
-                    } else {
-                        console.log('📛 Mensaje no individual ignorado:', from);
-                    }
-                    return;
+                    // Identificar tipo de origen para logging
+                    let tipo = 'desconocido';
+                    if (from.endsWith('@g.us')) tipo = 'grupo';
+                    else if (from === 'status@broadcast' || from.includes('broadcast')) tipo = 'estado/broadcast';
+                    else if (from.includes('@newsletter')) tipo = 'canal/newsletter';
+                    else if (from.includes('@channel')) tipo = 'canal';
+                    else if (from.includes('@lid')) tipo = 'comunidad';
+                    else if (from.includes('@g.')) tipo = 'grupo/comunidad';
+
+                    console.log(`📛 Mensaje ignorado [${tipo}]: ${from}`);
+                    return; // SALIR - No procesar nada que no sea contacto individual
                 }
+
+                // Si llegamos aquí, es un contacto individual válido (@s.whatsapp.net)
+                console.log('✅ Mensaje de contacto individual:', from);
 
                 // Obtener el texto del mensaje
                 const conversation = msg.message.conversation ||
