@@ -867,13 +867,24 @@ class WebServer {
         // ===== ENDPOINTS DE GESTIÓN DE CSV (SOLO ADMIN) =====
         
         // Configurar multer para subida de archivos
-        const upload = multer({ 
+        const upload = multer({
+            storage: multer.memoryStorage(),
             limits: { fileSize: 10 * 1024 * 1024 }, // Límite de 10MB
             fileFilter: (req, file, cb) => {
+                // Permitir CSV para uploads de naves
                 if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
                     cb(null, true);
+                }
+                // Permitir multimedia para envío por WhatsApp
+                else if (
+                    file.mimetype.startsWith('image/') ||
+                    file.mimetype === 'application/pdf' ||
+                    file.mimetype.includes('document') ||
+                    file.mimetype.includes('officedocument')
+                ) {
+                    cb(null, true);
                 } else {
-                    cb(new Error('Solo se permiten archivos CSV'));
+                    cb(new Error('Tipo de archivo no permitido'));
                 }
             }
         });
@@ -1113,6 +1124,119 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 res.status(500).json({
                     error: 'Error al salir del grupo',
                     details: error.message
+                });
+            }
+        });
+
+        // API endpoint para enviar archivos multimedia
+        this.app.post('/api/send-media', requireAuth, upload.single('file'), async (req, res) => {
+            try {
+                const { phone, caption } = req.body;
+                const file = req.file;
+
+                if (!phone) {
+                    return res.status(400).json({
+                        error: 'Phone is required',
+                        details: 'Debe proporcionar el teléfono'
+                    });
+                }
+
+                if (!file) {
+                    return res.status(400).json({
+                        error: 'File is required',
+                        details: 'Debe adjuntar un archivo'
+                    });
+                }
+
+                // Verificar si hay una instancia activa del bot
+                if (!global.whatsappBot || !global.whatsappBot.sock) {
+                    return res.status(503).json({
+                        error: 'WhatsApp bot not available',
+                        details: 'El bot de WhatsApp no está conectado'
+                    });
+                }
+
+                // Guardar archivo usando mediaService
+                const savedMedia = await mediaService.saveMedia(
+                    file.buffer,
+                    file.mimetype,
+                    file.originalname
+                );
+
+                // Formatear el número de teléfono
+                let formattedPhone = phone;
+                if (!phone.includes('@')) {
+                    formattedPhone = `${phone}@s.whatsapp.net`;
+                }
+
+                // Enviar archivo por WhatsApp
+                let sentMsg;
+                const mediaPath = savedMedia.filepath;
+
+                if (savedMedia.mediaType === 'images') {
+                    // Enviar imagen
+                    sentMsg = await global.whatsappBot.sock.sendMessage(formattedPhone, {
+                        image: { url: mediaPath },
+                        caption: caption || ''
+                    });
+                } else if (savedMedia.mediaType === 'documents') {
+                    // Enviar documento
+                    sentMsg = await global.whatsappBot.sock.sendMessage(formattedPhone, {
+                        document: { url: mediaPath },
+                        mimetype: savedMedia.mimetype,
+                        fileName: file.originalname || savedMedia.filename,
+                        caption: caption || ''
+                    });
+                } else {
+                    return res.status(400).json({
+                        error: 'Unsupported media type',
+                        details: 'Tipo de archivo no soportado'
+                    });
+                }
+
+                const messageId = sentMsg?.key?.id;
+
+                // Registrar en logs
+                const senderName = req.user ? req.user.name : 'Soporte';
+                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                const isGroup = phone.includes('@g.us') || formattedPhone.includes('@g.us');
+
+                const mediaInfo = {
+                    mediaType: savedMedia.mediaType,
+                    filename: savedMedia.filename,
+                    mimetype: savedMedia.mimetype,
+                    url: savedMedia.url,
+                    caption: caption || file.originalname
+                };
+
+                await logger.log(
+                    'soporte',
+                    caption || file.originalname || 'Archivo adjunto',
+                    cleanPhone,
+                    senderName,
+                    isGroup,
+                    null,
+                    null,
+                    messageId,
+                    mediaInfo
+                );
+
+                res.json({
+                    success: true,
+                    message: 'Archivo enviado correctamente',
+                    phone: phone,
+                    mediaType: savedMedia.mediaType,
+                    mediaUrl: savedMedia.url,
+                    mimetype: savedMedia.mimetype,
+                    caption: caption || file.originalname
+                });
+
+            } catch (error) {
+                console.error('Error enviando archivo:', error);
+
+                res.status(500).json({
+                    error: 'Failed to send file',
+                    details: error.message || 'Error interno del servidor'
                 });
             }
         });

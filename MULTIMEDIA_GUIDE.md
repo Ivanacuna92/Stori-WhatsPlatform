@@ -16,6 +16,27 @@ Esta aplicación ahora soporta el envío y recepción de archivos multimedia a t
 
 ## 🚀 Cómo Funciona
 
+### Envío de Archivos desde el Panel Web
+
+1. **Abrir panel de chat**
+   - Seleccionar contacto desde la lista
+   - Click en el botón 📎 (adjuntar) junto al input de mensaje
+
+2. **Seleccionar archivo**
+   - Elegir imagen (JPG, PNG, GIF, WebP) o documento (PDF, Word, Excel)
+   - Se valida tipo y tamaño (máximo 10MB)
+   - Aparece preview del archivo seleccionado
+
+3. **Agregar descripción (opcional)**
+   - Escribir texto en el campo de mensaje
+   - La descripción se envía como caption del archivo
+
+4. **Enviar**
+   - Click en botón "Enviar"
+   - El archivo se guarda en el servidor
+   - Se envía por WhatsApp al contacto
+   - Aparece en el chat con el archivo adjunto
+
 ### Recepción de Archivos
 
 1. **Cliente envía archivo por WhatsApp**
@@ -77,6 +98,29 @@ Agrega 5 columnas a la tabla `conversation_logs`:
 - `media_caption`
 
 ## 📡 Endpoints API
+
+### Enviar Archivo
+```
+POST /api/send-media
+```
+**Headers**: Cookie con token de autenticación
+**Body**: FormData con:
+- `phone`: Número de teléfono del destinatario
+- `file`: Archivo a enviar (imagen o documento)
+- `caption`: (Opcional) Descripción del archivo
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Archivo enviado correctamente",
+  "phone": "1234567890",
+  "mediaType": "images",
+  "mediaUrl": "/api/media/images/1704567890_abc123.jpg",
+  "mimetype": "image/jpeg",
+  "caption": "Mi imagen"
+}
+```
 
 ### Servir Archivo
 ```

@@ -16,8 +16,11 @@ function ChatPanel({ contact, onUpdateContact }) {
   const [showLeaveGroupModal, setShowLeaveGroupModal] = useState(false);
   const [deletingConversation, setDeletingConversation] = useState(false);
   const [leavingGroup, setLeavingGroup] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
   const messagesEndRef = useRef(null);
   const optionsMenuRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     // Scroll automático e instantáneo al cambiar de contacto
@@ -69,25 +72,117 @@ function ChatPanel({ contact, onUpdateContact }) {
     }
   }, [contact?.mode, contact?.phone, contact?.messages, contact?.isGroup]);
 
-  const handleSend = async () => {
-    if (!message.trim() || !contact || sending) return;
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    // YA NO HAY VALIDACIÓN DE MODO - Siempre se puede enviar
+    // Validar tipo de archivo
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      alert('Tipo de archivo no soportado. Solo se permiten: imágenes (JPG, PNG, GIF, WebP), PDFs y documentos Office.');
+      return;
+    }
+
+    // Validar tamaño (máximo 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('El archivo es demasiado grande. Máximo 10MB.');
+      return;
+    }
+
+    setSelectedFile(file);
+
+    // Crear preview para imágenes
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFilePreview(null);
+    }
+  };
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSend = async () => {
+    if ((!message.trim() && !selectedFile) || !contact || sending) return;
+
     setSending(true);
     try {
-      await sendMyMessage(contact.phone, message); // Sin parámetro isGroup
+      // Si hay archivo, enviarlo
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append('phone', contact.phone);
+        formData.append('file', selectedFile);
+        if (message.trim()) {
+          formData.append('caption', message);
+        }
+
+        const response = await fetch('/api/send-media', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.details || error.error || 'Error enviando archivo');
+        }
+
+        const result = await response.json();
+
+        // Agregar mensaje con archivo a la UI
+        const newMessage = {
+          type: 'HUMAN',
+          message: message || result.caption || 'Archivo adjunto',
+          timestamp: new Date().toISOString(),
+          mediaType: result.mediaType,
+          mediaUrl: result.mediaUrl,
+          mediaMimetype: result.mimetype,
+          mediaCaption: message || result.caption
+        };
+
+        onUpdateContact({
+          ...contact,
+          messages: [...(contact.messages || []), newMessage]
+        });
+
+        clearFile();
+      } else {
+        // Enviar solo texto
+        await sendMyMessage(contact.phone, message);
+
+        const newMessage = {
+          type: 'HUMAN',
+          message: message,
+          timestamp: new Date().toISOString()
+        };
+
+        onUpdateContact({
+          ...contact,
+          messages: [...(contact.messages || []), newMessage]
+        });
+      }
+
       setMessage('');
-      
-      const newMessage = {
-        type: 'HUMAN',
-        message: message,
-        timestamp: new Date().toISOString()
-      };
-      
-      onUpdateContact({
-        ...contact,
-        messages: [...(contact.messages || []), newMessage]
-      });
     } catch (error) {
       alert('Error enviando mensaje: ' + error.message);
     } finally {
@@ -479,55 +574,144 @@ function ChatPanel({ contact, onUpdateContact }) {
           </div>
         </div>
       ) : (
-        <div className="bg-white px-6 py-4 flex gap-3" style={{
+        <div className="bg-white" style={{
           borderTop: '1px solid #E8EBED',
           boxShadow: '0 -1px 3px rgba(0, 0, 0, 0.02)'
         }}>
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Escribe un mensaje..."
-            disabled={sending}
-            className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50"
-            style={{
-              background: '#F3F4F6',
-              border: '1px solid transparent'
-            }}
-            onFocus={(e) => {
-              if (!e.target.disabled) {
-                e.target.style.background = '#ffffff';
-                e.target.style.border = '1px solid #f7c06f';
-                e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
-              }
-            }}
-            onBlur={(e) => {
-              e.target.style.background = '#F3F4F6';
-              e.target.style.border = '1px solid transparent';
-              e.target.style.boxShadow = 'none';
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={sending || !message.trim()}
-            className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: '#f7c06f'
-            }}
-            onMouseEnter={(e) => {
-              if (!e.target.disabled) {
-                e.target.style.background = '#e5a84d';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!e.target.disabled) {
-                e.target.style.background = '#f7c06f';
-              }
-            }}
-          >
-            {sending ? '...' : 'Enviar'}
-          </button>
+          {/* Preview de archivo seleccionado */}
+          {selectedFile && (
+            <div className="px-6 pt-4 pb-2">
+              <div className="flex items-center gap-3 p-3 rounded-xl" style={{
+                background: '#F3F4F6',
+                border: '1px solid #E8EBED'
+              }}>
+                {filePreview ? (
+                  <img src={filePreview} alt="Preview" className="w-16 h-16 rounded-lg object-cover" />
+                ) : (
+                  <div className="w-16 h-16 rounded-lg flex items-center justify-center" style={{ background: '#E8EBED' }}>
+                    <svg className="w-8 h-8 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-800 truncate">
+                    {selectedFile.name}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {(selectedFile.size / 1024).toFixed(1)} KB
+                  </div>
+                </div>
+                <button
+                  onClick={clearFile}
+                  disabled={sending}
+                  className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#EF4444'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!sending) {
+                      e.target.style.background = '#EF4444';
+                      e.target.style.color = 'white';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!sending) {
+                      e.target.style.background = 'rgba(239, 68, 68, 0.1)';
+                      e.target.style.color = '#EF4444';
+                    }
+                  }}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Input de mensaje y botones */}
+          <div className="px-6 py-4 flex gap-3">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,.doc,.docx,.xls,.xlsx"
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              className="w-11 h-11 rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
+              style={{
+                background: '#F3F4F6',
+                color: '#6B7280'
+              }}
+              onMouseEnter={(e) => {
+                if (!sending) {
+                  e.target.style.background = '#E8EBED';
+                  e.target.style.color = '#f7c06f';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!sending) {
+                  e.target.style.background = '#F3F4F6';
+                  e.target.style.color = '#6B7280';
+                }
+              }}
+              title="Adjuntar archivo"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              placeholder={selectedFile ? "Agregar descripción (opcional)..." : "Escribe un mensaje..."}
+              disabled={sending}
+              className="flex-1 px-4 py-3 rounded-xl focus:outline-none text-sm transition-all disabled:opacity-50"
+              style={{
+                background: '#F3F4F6',
+                border: '1px solid transparent'
+              }}
+              onFocus={(e) => {
+                if (!e.target.disabled) {
+                  e.target.style.background = '#ffffff';
+                  e.target.style.border = '1px solid #f7c06f';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+                }
+              }}
+              onBlur={(e) => {
+                e.target.style.background = '#F3F4F6';
+                e.target.style.border = '1px solid transparent';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={sending || (!message.trim() && !selectedFile)}
+              className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                background: '#f7c06f'
+              }}
+              onMouseEnter={(e) => {
+                if (!e.target.disabled) {
+                  e.target.style.background = '#e5a84d';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!e.target.disabled) {
+                  e.target.style.background = '#f7c06f';
+                }
+              }}
+            >
+              {sending ? '...' : 'Enviar'}
+            </button>
+          </div>
         </div>
       )}
 
