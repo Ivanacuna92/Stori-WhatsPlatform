@@ -11,6 +11,7 @@ const authService = require('../services/authService');
 const csvService = require('../services/csvService');
 const systemConfigService = require('../services/systemConfigService');
 const promptLoader = require('../services/promptLoader');
+const mediaService = require('../services/mediaService');
 const { requireAuth, requireAdmin, requireSupportOrAdmin } = require('../middleware/auth');
 const ViteExpress = require('vite-express');
 
@@ -435,6 +436,79 @@ class WebServer {
                 user: req.user,
                 expiresAt: req.sessionExpiresAt
             });
+        });
+
+        // ===== ENDPOINTS DE ARCHIVOS MULTIMEDIA (PÚBLICOS) =====
+
+        // Servir archivo multimedia por tipo y nombre
+        this.app.get('/api/media/:mediaType/:filename', async (req, res) => {
+            try {
+                const { mediaType, filename } = req.params;
+
+                // Validar tipo de media
+                const allowedTypes = ['images', 'documents', 'videos', 'audio'];
+                if (!allowedTypes.includes(mediaType)) {
+                    return res.status(400).json({ error: 'Tipo de media no válido' });
+                }
+
+                // Verificar si el archivo existe
+                const exists = await mediaService.fileExists(mediaType, filename);
+                if (!exists) {
+                    return res.status(404).json({ error: 'Archivo no encontrado' });
+                }
+
+                // Leer el archivo
+                const fileBuffer = await mediaService.readMedia(mediaType, filename);
+
+                // Determinar MIME type
+                const mimeType = mediaService.getMimeType(filename);
+
+                // Establecer headers
+                res.setHeader('Content-Type', mimeType);
+                res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+                res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache por 24 horas
+
+                // Enviar archivo
+                res.send(fileBuffer);
+            } catch (error) {
+                console.error('Error sirviendo archivo multimedia:', error);
+                res.status(500).json({ error: 'Error al servir archivo' });
+            }
+        });
+
+        // Descargar archivo multimedia
+        this.app.get('/api/media/:mediaType/:filename/download', async (req, res) => {
+            try {
+                const { mediaType, filename } = req.params;
+
+                // Validar tipo de media
+                const allowedTypes = ['images', 'documents', 'videos', 'audio'];
+                if (!allowedTypes.includes(mediaType)) {
+                    return res.status(400).json({ error: 'Tipo de media no válido' });
+                }
+
+                // Verificar si el archivo existe
+                const exists = await mediaService.fileExists(mediaType, filename);
+                if (!exists) {
+                    return res.status(404).json({ error: 'Archivo no encontrado' });
+                }
+
+                // Leer el archivo
+                const fileBuffer = await mediaService.readMedia(mediaType, filename);
+
+                // Determinar MIME type
+                const mimeType = mediaService.getMimeType(filename);
+
+                // Establecer headers para descarga
+                res.setHeader('Content-Type', mimeType);
+                res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+                // Enviar archivo
+                res.send(fileBuffer);
+            } catch (error) {
+                console.error('Error descargando archivo multimedia:', error);
+                res.status(500).json({ error: 'Error al descargar archivo' });
+            }
         });
 
         // ===== TODAS LAS DEMÁS RUTAS REQUIEREN AUTENTICACIÓN =====

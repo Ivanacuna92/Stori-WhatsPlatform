@@ -1,5 +1,5 @@
 const makeWASocket = require('baileys').default;
-const { DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion } = require('baileys');
+const { DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, downloadMediaMessage } = require('baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const config = require('../config/config');
@@ -9,6 +9,7 @@ const sessionManager = require('../services/sessionManager');
 const promptLoader = require('../services/promptLoader');
 const humanModeManager = require('../services/humanModeManager');
 const followUpService = require('../services/followUpService');
+const mediaService = require('../services/mediaService');
 
 class WhatsAppBot {
     constructor() {
@@ -210,26 +211,102 @@ class WhatsAppBot {
                 // Si llegamos aquí, es un contacto individual válido (@s.whatsapp.net)
                 console.log('✅ Mensaje de contacto individual:', from);
 
-                // Obtener el texto del mensaje
-                const conversation = msg.message.conversation ||
-                                   msg.message.extendedTextMessage?.text ||
-                                   '';
-
-                // Ignorar mensajes sin texto
-                if (!conversation || conversation.trim() === '') {
-                    console.log('Mensaje ignorado - Sin contenido de texto');
-                    return;
-                }
-
-                // Solo chats privados
                 const userId = from.replace('@s.whatsapp.net', '');
                 const userName = msg.pushName || userId;
 
-                await logger.log('cliente', conversation, userId, userName, false);
+                // Detectar tipo de mensaje y extraer contenido
+                let conversation = '';
+                let mediaInfo = null;
+
+                // Verificar si el mensaje contiene imagen
+                if (msg.message.imageMessage) {
+                    try {
+                        console.log('📸 Imagen detectada');
+                        const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                        const caption = msg.message.imageMessage.caption || 'Imagen sin descripción';
+
+                        // Guardar la imagen
+                        const savedMedia = await mediaService.saveMedia(
+                            buffer,
+                            msg.message.imageMessage.mimetype || 'image/jpeg',
+                            'image'
+                        );
+
+                        mediaInfo = {
+                            ...savedMedia,
+                            caption: caption
+                        };
+
+                        conversation = caption;
+                        console.log(`✅ Imagen guardada: ${savedMedia.filename}`);
+                    } catch (error) {
+                        console.error('Error procesando imagen:', error);
+                        conversation = '[Imagen - Error al procesar]';
+                    }
+                }
+                // Verificar si el mensaje contiene documento (PDF u otros)
+                else if (msg.message.documentMessage) {
+                    try {
+                        const docMessage = msg.message.documentMessage;
+                        const mimetype = docMessage.mimetype || 'application/octet-stream';
+
+                        // Solo procesar PDFs y algunos documentos comunes
+                        const allowedTypes = [
+                            'application/pdf',
+                            'application/msword',
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            'application/vnd.ms-excel',
+                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        ];
+
+                        if (allowedTypes.includes(mimetype)) {
+                            console.log(`📄 Documento detectado: ${mimetype}`);
+                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                            const caption = docMessage.caption || docMessage.fileName || 'Documento sin nombre';
+
+                            // Guardar el documento
+                            const savedMedia = await mediaService.saveMedia(
+                                buffer,
+                                mimetype,
+                                docMessage.fileName
+                            );
+
+                            mediaInfo = {
+                                ...savedMedia,
+                                caption: caption
+                            };
+
+                            conversation = caption;
+                            console.log(`✅ Documento guardado: ${savedMedia.filename}`);
+                        } else {
+                            console.log(`⚠️ Tipo de documento no soportado: ${mimetype}`);
+                            conversation = `[Documento tipo ${mimetype} no soportado]`;
+                        }
+                    } catch (error) {
+                        console.error('Error procesando documento:', error);
+                        conversation = '[Documento - Error al procesar]';
+                    }
+                }
+                // Mensaje de texto normal
+                else {
+                    conversation = msg.message.conversation ||
+                                 msg.message.extendedTextMessage?.text ||
+                                 '';
+
+                    // Ignorar mensajes sin texto y sin media
+                    if (!conversation || conversation.trim() === '') {
+                        console.log('Mensaje ignorado - Sin contenido de texto ni multimedia');
+                        return;
+                    }
+                }
+
+                // Registrar el mensaje (con o sin archivo multimedia)
+                await logger.log('cliente', conversation, userId, userName, false, null, null, null, mediaInfo);
 
                 // YA NO HAY IA - Solo registrar el mensaje entrante
                 // Los humanos responderán manualmente desde el panel
-                await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId}) - Esperando respuesta humana`);
+                const mediaText = mediaInfo ? ` con ${mediaInfo.mediaType}` : '';
+                await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId})${mediaText} - Esperando respuesta humana`);
 
                 // Cancelar seguimiento si existe
                 if (followUpService.hasActiveFollowUp(userId)) {
