@@ -1,7 +1,4 @@
-const makeWASocket = require('baileys').default;
-const { DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore, fetchLatestBaileysVersion, downloadMediaMessage } = require('baileys');
-const qrcode = require('qrcode-terminal');
-const pino = require('pino');
+const wppconnect = require('@wppconnect-team/wppconnect');
 const config = require('../config/config');
 const logger = require('../services/logger');
 const aiService = require('../services/aiService');
@@ -13,149 +10,213 @@ const mediaService = require('../services/mediaService');
 
 class WhatsAppBot {
     constructor() {
-        this.sock = null;
+        this.client = null;
         this.currentQR = null;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 3;
-        this.isReconnecting = false;
+        this.isReady = false;
     }
 
     async start() {
-        if (this.isReconnecting) {
-            console.log('Ya hay un intento de reconexión en progreso...');
-            return;
-        }
-        
-        this.isReconnecting = true;
-        console.log('Iniciando bot de WhatsApp con Baileys...');
+        console.log('Iniciando bot de WhatsApp con WPPConnect...');
         config.validateApiKey();
-        
+
         try {
-            // Configurar autenticación multi-archivo
-            const { state, saveCreds } = await useMultiFileAuthState('./auth_baileys');
-            
-            // Obtener versión más reciente de Baileys
-            const { version, isLatest } = await fetchLatestBaileysVersion();
-            console.log(`Usando versión de WhatsApp Web: ${version.join('.')} (última: ${isLatest})`);
-            
-            // Store no es necesario en baileys v6
-            
-            // Crear socket de WhatsApp con configuración mejorada para producción
-            this.sock = makeWASocket({
-                version,
-                auth: state,
-                printQRInTerminal: false,
-                logger: pino({ level: 'silent' }),
-                browser: ['Chrome (Linux)', '', ''],
-                generateHighQualityLinkPreview: false,
-                syncFullHistory: false,
-                getMessage: async () => {
-                    return { conversation: 'No disponible' };
+            // Crear cliente WPPConnect
+            this.client = await wppconnect.create({
+                session: 'main_bot',
+                headless: true,
+                devtools: false,
+                useChrome: true,
+                debug: false,
+                logQR: false,
+                browserArgs: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu'
+                ],
+                // Capturar QR
+                catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
+                    console.log('Escanea este código QR con WhatsApp:');
+                    console.log('O visita: http://tu-servidor:3001/qr');
+                    this.currentQR = base64Qr;
+                    console.log(asciiQR); // Mostrar QR en terminal
                 },
-                defaultQueryTimeoutMs: undefined,
-                connectTimeoutMs: 60000,
-                keepAliveIntervalMs: 30000,
-                qrTimeout: undefined,
-                markOnlineOnConnect: false,
-                msgRetryCounterCache: new Map(),
-                retryRequestDelayMs: 250,
-                maxMsgRetryCount: 5
+                // Configurar directorio de sesión
+                folderNameToken: 'tokens',
+                mkdirFolderToken: '',
+                // Callbacks de estado
+                statusFind: (statusSession, session) => {
+                    console.log(`📊 Estado de sesión: ${statusSession}`);
+
+                    if (statusSession === 'isLogged' || statusSession === 'qrReadSuccess') {
+                        console.log('¡Bot de WhatsApp conectado y listo!');
+                        this.currentQR = null;
+                        this.isReady = true;
+                        logger.log('SYSTEM', 'Bot iniciado correctamente con WPPConnect');
+                        sessionManager.startCleanupTimer(this.client);
+                        followUpService.startFollowUpTimer(this.client);
+                    } else if (statusSession === 'autocloseCalled' || statusSession === 'desconnectedMobile') {
+                        console.log('Cliente desconectado');
+                        this.isReady = false;
+                        logger.log('SYSTEM', 'Bot desconectado');
+                    }
+                }
             });
-            
-        
-        // Guardar credenciales cuando se actualicen
-        this.sock.ev.on('creds.update', saveCreds);
-        
-        // Manejar actualizaciones de conexión
-        this.sock.ev.on('connection.update', (update) => {
-            const { connection, lastDisconnect, qr } = update;
-            
-            if (qr) {
-                console.log('Escanea este código QR con WhatsApp:');
-                console.log('O visita: http://tu-servidor:4242/qr');
-                this.currentQR = qr;
-                qrcode.generate(qr, { small: true });
-            }
-            
-            if (connection === 'close') {
-                const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                console.log('Conexión cerrada debido a', lastDisconnect?.error, ', reconectando:', shouldReconnect);
-                
-                // Si es error 405 o 401, limpiar sesión y reiniciar con límite
-                if (statusCode === 405 || statusCode === 401 || statusCode === 403) {
-                    this.reconnectAttempts++;
-                    
-                    if (this.reconnectAttempts > this.maxReconnectAttempts) {
-                        console.log('❌ Máximo de intentos de reconexión alcanzado. Por favor usa el botón de reiniciar sesión en /qr');
-                        this.isReconnecting = false;
+
+            // Event: Mensaje recibido
+            this.client.onMessage(async (message) => {
+                try {
+                    // Ignorar mensajes de grupos y mensajes propios
+                    if (message.isGroupMsg || message.fromMe) {
                         return;
                     }
-                    
-                    console.log(`Error ${statusCode} detectado. Intento ${this.reconnectAttempts}/${this.maxReconnectAttempts}. Limpiando sesión...`);
-                    this.clearSession();
-                    
-                    this.isReconnecting = false;
-                    setTimeout(() => this.start(), 5000);
-                } else if (shouldReconnect && statusCode !== DisconnectReason.loggedOut) {
-                    this.reconnectAttempts = 0;
-                    this.isReconnecting = false;
-                    setTimeout(() => this.start(), 5000);
-                } else {
-                    this.isReconnecting = false;
+
+                    const from = message.from;
+
+                    // Solo procesar mensajes de contactos individuales (@c.us)
+                    const isIndividualContact = from && from.endsWith('@c.us');
+
+                    if (!isIndividualContact) {
+                        let tipo = 'desconocido';
+                        if (from.endsWith('@g.us')) tipo = 'grupo';
+                        else if (from.includes('broadcast')) tipo = 'broadcast';
+                        else if (from.includes('status')) tipo = 'estado';
+
+                        console.log(`📛 Mensaje ignorado [${tipo}]: ${from}`);
+                        return;
+                    }
+
+                    console.log('✅ Mensaje de contacto individual:', from);
+
+                    const userId = from.replace('@c.us', '');
+                    const userName = message.sender.pushname || message.sender.name || userId;
+
+                    // Detectar tipo de mensaje y extraer contenido
+                    let conversation = '';
+                    let mediaInfo = null;
+
+                    if (message.type === 'chat') {
+                        conversation = message.body || '';
+                    } else if (message.type === 'image') {
+                        try {
+                            console.log('📸 Imagen detectada');
+                            const mediaData = await message.downloadMedia();
+
+                            if (mediaData) {
+                                const buffer = Buffer.from(mediaData, 'base64');
+                                const caption = message.caption || 'Imagen sin descripción';
+
+                                // Guardar la imagen
+                                const savedMedia = await mediaService.saveMedia(
+                                    buffer,
+                                    message.mimetype || 'image/jpeg',
+                                    'image'
+                                );
+
+                                mediaInfo = {
+                                    ...savedMedia,
+                                    caption: caption
+                                };
+
+                                conversation = caption;
+                                console.log(`✅ Imagen guardada: ${savedMedia.filename}`);
+                            }
+                        } catch (error) {
+                            console.error('Error procesando imagen:', error);
+                            conversation = '[Imagen - Error al procesar]';
+                        }
+                    } else if (message.type === 'document') {
+                        try {
+                            const allowedTypes = [
+                                'application/pdf',
+                                'application/msword',
+                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                'application/vnd.ms-excel',
+                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                            ];
+
+                            if (allowedTypes.includes(message.mimetype)) {
+                                console.log(`📄 Documento detectado: ${message.mimetype}`);
+                                const mediaData = await message.downloadMedia();
+
+                                if (mediaData) {
+                                    const buffer = Buffer.from(mediaData, 'base64');
+                                    const caption = message.caption || message.filename || 'Documento sin nombre';
+
+                                    // Guardar el documento
+                                    const savedMedia = await mediaService.saveMedia(
+                                        buffer,
+                                        message.mimetype,
+                                        message.filename
+                                    );
+
+                                    mediaInfo = {
+                                        ...savedMedia,
+                                        caption: caption
+                                    };
+
+                                    conversation = caption;
+                                    console.log(`✅ Documento guardado: ${savedMedia.filename}`);
+                                }
+                            } else {
+                                console.log(`⚠️ Tipo de documento no soportado: ${message.mimetype}`);
+                                conversation = `[Documento tipo ${message.mimetype} no soportado]`;
+                            }
+                        } catch (error) {
+                            console.error('Error procesando documento:', error);
+                            conversation = '[Documento - Error al procesar]';
+                        }
+                    } else {
+                        console.log(`⚠️ Tipo de mensaje no soportado: ${message.type}`);
+                        return;
+                    }
+
+                    // Ignorar mensajes vacíos
+                    if (!conversation || conversation.trim() === '') {
+                        console.log('Mensaje ignorado - Sin contenido');
+                        return;
+                    }
+
+                    // Registrar el mensaje (con o sin archivo multimedia)
+                    await logger.log('cliente', conversation, userId, userName, false, null, null, null, mediaInfo);
+
+                    // YA NO HAY IA - Solo registrar el mensaje entrante
+                    const mediaText = mediaInfo ? ` con ${mediaInfo.mediaType}` : '';
+                    await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId})${mediaText} - Esperando respuesta humana`);
+
+                    // Cancelar seguimiento si existe
+                    if (followUpService.hasActiveFollowUp(userId)) {
+                        await followUpService.cancelFollowUp(userId, 'Cliente respondió');
+                    }
+
+                } catch (error) {
+                    await this.handleError(error, message);
                 }
-            } else if (connection === 'open') {
-                console.log('¡Bot de WhatsApp conectado y listo!');
-                this.currentQR = null;
-                this.reconnectAttempts = 0;
-                this.isReconnecting = false;
-                logger.log('SYSTEM', 'Bot iniciado correctamente con Baileys');
-                sessionManager.startCleanupTimer(this.sock);
-                followUpService.startFollowUpTimer(this.sock);
-            }
-        });
-        
-        } catch (error) {
-            console.error('Error iniciando bot:', error);
-            this.isReconnecting = false;
-            
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                this.reconnectAttempts++;
-                console.log(`Reintentando en 5 segundos... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-                setTimeout(() => this.start(), 5000);
-            }
-        }
-        
-        // Manejar actualizaciones de estado de mensajes
-        this.sock.ev.on('messages.update', async (updates) => {
-            for (const update of updates) {
+            });
+
+            // Event: ACK (confirmación de lectura/entrega)
+            this.client.onAck(async (ack) => {
                 try {
-                    const messageId = update.key.id;
-                    const userId = update.key.remoteJid?.replace('@s.whatsapp.net', '');
+                    const messageId = ack.id?.id;
+                    if (!messageId) return;
 
-                    // Log para debugging
-                    console.log('📱 Update recibido:', JSON.stringify(update, null, 2));
+                    const userId = ack.to?.replace('@c.us', '');
 
-                    // Determinar el estado según el update
                     let status = null;
 
-                    // Status codes de WhatsApp:
-                    // 1 = sent (enviado al servidor)
-                    // 2 = delivered (entregado al dispositivo)
-                    // 3 = played (mensaje de voz reproducido o estado intermedio)
-                    // 4 = read (leído - checks azules)
-
-                    if (update.update.status === 4) {
-                        status = 'read'; // Mensaje leído (checks azules)
-                        console.log('🔵 LEÍDO detectado - Status 4');
-                    } else if (update.update.status === 2) {
-                        status = 'delivered'; // Mensaje entregado (double check gris)
-                        console.log('⚪ ENTREGADO detectado - Status 2');
-                    } else if (update.update.status === 1) {
-                        status = 'sent'; // Mensaje enviado (single check)
-                        console.log('⚪ ENVIADO detectado - Status 1');
+                    if (ack.ack === 4) {
+                        status = 'read';
+                        console.log('🔵 LEÍDO detectado - ACK 4');
+                    } else if (ack.ack === 3) {
+                        status = 'delivered';
+                        console.log('⚪ ENTREGADO detectado - ACK 3');
+                    } else if (ack.ack === 2) {
+                        status = 'sent';
+                        console.log('⚪ ENVIADO detectado - ACK 2');
                     }
-                    // Ignorar status 3 (estado intermedio/voz reproducida)
 
                     if (status && messageId) {
                         await logger.updateMessageStatus(messageId, status);
@@ -164,161 +225,15 @@ class WhatsAppBot {
                 } catch (error) {
                     console.error('Error actualizando estado de mensaje:', error);
                 }
-            }
-        });
+            });
 
-        // Manejar mensajes entrantes
-        this.sock.ev.on('messages.upsert', async (m) => {
-            try {
-                const msg = m.messages[0];
-                if (!msg.message) return;
-
-                // Log para debugging
-                console.log('Mensaje recibido - fromMe:', msg.key.fromMe, 'remoteJid:', msg.key.remoteJid);
-
-                // Ignorar mensajes propios
-                if (msg.key.fromMe) {
-                    console.log('Ignorando mensaje propio');
-                    return;
-                }
-
-                // Obtener el número del remitente
-                const from = msg.key.remoteJid;
-
-                // ===============================================
-                // FILTRO ESTRICTO: SOLO CONTACTOS INDIVIDUALES
-                // ===============================================
-                // Solo procesar mensajes de contactos directos (@s.whatsapp.net)
-                // IGNORAR TODO LO DEMÁS sin excepción
-
-                // Verificar primero si NO es un contacto individual antes de cualquier procesamiento
-                const isIndividualContact = from && from.endsWith('@s.whatsapp.net');
-
-                if (!isIndividualContact) {
-                    // Identificar tipo de origen para logging
-                    let tipo = 'desconocido';
-                    if (from.endsWith('@g.us')) tipo = 'grupo';
-                    else if (from === 'status@broadcast' || from.includes('broadcast')) tipo = 'estado/broadcast';
-                    else if (from.includes('newsletter') || from.includes('@newsletter')) tipo = 'newsletter/canal';
-                    else if (from.includes('@channel') || from.includes('channel')) tipo = 'canal';
-                    else if (from.includes('@lid')) tipo = 'comunidad';
-                    else if (from.includes('@g.')) tipo = 'grupo/comunidad';
-
-                    console.log(`📛 Mensaje ignorado [${tipo}]: ${from}`);
-                    return; // SALIR INMEDIATAMENTE - No procesar ni registrar nada
-                }
-
-                // Si llegamos aquí, es un contacto individual válido (@s.whatsapp.net)
-                console.log('✅ Mensaje de contacto individual:', from);
-
-                const userId = from.replace('@s.whatsapp.net', '');
-                const userName = msg.pushName || userId;
-
-                // Detectar tipo de mensaje y extraer contenido
-                let conversation = '';
-                let mediaInfo = null;
-
-                // Verificar si el mensaje contiene imagen
-                if (msg.message.imageMessage) {
-                    try {
-                        console.log('📸 Imagen detectada');
-                        const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                        const caption = msg.message.imageMessage.caption || 'Imagen sin descripción';
-
-                        // Guardar la imagen
-                        const savedMedia = await mediaService.saveMedia(
-                            buffer,
-                            msg.message.imageMessage.mimetype || 'image/jpeg',
-                            'image'
-                        );
-
-                        mediaInfo = {
-                            ...savedMedia,
-                            caption: caption
-                        };
-
-                        conversation = caption;
-                        console.log(`✅ Imagen guardada: ${savedMedia.filename}`);
-                    } catch (error) {
-                        console.error('Error procesando imagen:', error);
-                        conversation = '[Imagen - Error al procesar]';
-                    }
-                }
-                // Verificar si el mensaje contiene documento (PDF u otros)
-                else if (msg.message.documentMessage) {
-                    try {
-                        const docMessage = msg.message.documentMessage;
-                        const mimetype = docMessage.mimetype || 'application/octet-stream';
-
-                        // Solo procesar PDFs y algunos documentos comunes
-                        const allowedTypes = [
-                            'application/pdf',
-                            'application/msword',
-                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                            'application/vnd.ms-excel',
-                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                        ];
-
-                        if (allowedTypes.includes(mimetype)) {
-                            console.log(`📄 Documento detectado: ${mimetype}`);
-                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                            const caption = docMessage.caption || docMessage.fileName || 'Documento sin nombre';
-
-                            // Guardar el documento
-                            const savedMedia = await mediaService.saveMedia(
-                                buffer,
-                                mimetype,
-                                docMessage.fileName
-                            );
-
-                            mediaInfo = {
-                                ...savedMedia,
-                                caption: caption
-                            };
-
-                            conversation = caption;
-                            console.log(`✅ Documento guardado: ${savedMedia.filename}`);
-                        } else {
-                            console.log(`⚠️ Tipo de documento no soportado: ${mimetype}`);
-                            conversation = `[Documento tipo ${mimetype} no soportado]`;
-                        }
-                    } catch (error) {
-                        console.error('Error procesando documento:', error);
-                        conversation = '[Documento - Error al procesar]';
-                    }
-                }
-                // Mensaje de texto normal
-                else {
-                    conversation = msg.message.conversation ||
-                                 msg.message.extendedTextMessage?.text ||
-                                 '';
-
-                    // Ignorar mensajes sin texto y sin media
-                    if (!conversation || conversation.trim() === '') {
-                        console.log('Mensaje ignorado - Sin contenido de texto ni multimedia');
-                        return;
-                    }
-                }
-
-                // Registrar el mensaje (con o sin archivo multimedia)
-                await logger.log('cliente', conversation, userId, userName, false, null, null, null, mediaInfo);
-
-                // YA NO HAY IA - Solo registrar el mensaje entrante
-                // Los humanos responderán manualmente desde el panel
-                const mediaText = mediaInfo ? ` con ${mediaInfo.mediaType}` : '';
-                await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId})${mediaText} - Esperando respuesta humana`);
-
-                // Cancelar seguimiento si existe
-                if (followUpService.hasActiveFollowUp(userId)) {
-                    await followUpService.cancelFollowUp(userId, 'Cliente respondió');
-                }
-                
-            } catch (error) {
-                await this.handleError(error, m.messages[0]);
-            }
-        });
+        } catch (error) {
+            console.error('Error iniciando bot:', error);
+            logger.log('ERROR', 'Error iniciando bot: ' + error.message);
+            throw error;
+        }
     }
-    
+
     async processMessage(userId, userMessage, chatId) {
         // Agregar mensaje del usuario a la sesión
         await sessionManager.addMessage(userId, 'user', userMessage, chatId);
@@ -337,84 +252,67 @@ class WhatsAppBot {
 
         // Verificar si la respuesta contiene el marcador de activar soporte
         if (aiResponse.includes('{{ACTIVAR_SOPORTE}}')) {
-            // Remover el marcador de la respuesta
             const cleanResponse = aiResponse.replace('{{ACTIVAR_SOPORTE}}', '').trim();
-
-            // Activar modo soporte
             await humanModeManager.setMode(userId, 'support');
             await sessionManager.updateSessionMode(userId, chatId, 'support');
-
-            // Agregar respuesta limpia a la sesión
             await sessionManager.addMessage(userId, 'assistant', cleanResponse, chatId);
-
-            // Registrar en logs
             await logger.log('SYSTEM', `Modo SOPORTE activado automáticamente para ${userId}`);
-
             return cleanResponse;
         }
 
-        // Agregar respuesta de IA a la sesión
         await sessionManager.addMessage(userId, 'assistant', aiResponse, chatId);
-
         return aiResponse;
     }
-    
+
     async handleError(error, message) {
         console.error('Error procesando mensaje:', error);
-        
-        const from = message.key.remoteJid;
-        const userId = from.replace('@s.whatsapp.net', '');
-        
+
+        const from = message.from;
+        const userId = from.replace('@c.us', '');
+
         let errorMessage = 'Lo siento, ocurrió un error. Inténtalo de nuevo.';
-        
+
         if (error.message.includes('autenticación') || error.message.includes('API key')) {
             errorMessage = 'Error de configuración del bot. Por favor, contacta al administrador.';
         }
-        
+
         try {
-            await this.sock.sendMessage(from, { text: errorMessage });
+            await this.client.sendText(from, errorMessage);
             logger.log('ERROR', error.message, userId);
         } catch (sendError) {
             console.error('Error enviando mensaje de error:', sendError);
         }
     }
-    
+
     async stop() {
         console.log('Cerrando bot...');
-        if (this.sock) {
-            this.sock.end();
+        if (this.client) {
+            await this.client.close();
         }
     }
-    
+
     async clearSession() {
         const fs = require('fs').promises;
         const path = require('path');
-        const authPath = path.join(process.cwd(), 'auth_baileys');
-        
+        const tokensPath = path.join(process.cwd(), 'tokens', 'main_bot');
+
         try {
-            await fs.rm(authPath, { recursive: true, force: true });
+            await fs.rm(tokensPath, { recursive: true, force: true });
             console.log('Sesión eliminada correctamente');
         } catch (err) {
             console.log('No había sesión previa o ya fue eliminada');
         }
     }
-    
+
     async logout() {
         console.log('Cerrando sesión de WhatsApp...');
         try {
-            this.reconnectAttempts = 0;
-            this.isReconnecting = false;
-            
-            if (this.sock) {
-                try {
-                    await this.sock.logout();
-                } catch (err) {
-                    console.log('Error al hacer logout:', err.message);
-                }
+            if (this.client) {
+                await this.client.logout();
             }
-            
+
             await this.clearSession();
-            
+
             // Reiniciar el bot para generar nuevo QR
             setTimeout(() => this.start(), 2000);
             return true;

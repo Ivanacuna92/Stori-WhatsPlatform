@@ -33,14 +33,40 @@ async function startAllInstances() {
         console.log('🧹 Verificando y limpiando sesiones corruptas...');
         await cleanCorruptedSessions(users);
 
+        // Filtrar solo usuarios que tienen sesión guardada
+        const fs = require('fs');
+        const path = require('path');
+        const usersWithSession = [];
+
+        for (const user of users) {
+            const tokensPath = path.join(process.cwd(), 'tokens', `user_${user.id}`);
+            try {
+                // Verificar si existe la carpeta de tokens y tiene archivos
+                if (fs.existsSync(tokensPath)) {
+                    const files = fs.readdirSync(tokensPath);
+                    if (files.length > 0 && !files.every(f => f.startsWith('.'))) {
+                        usersWithSession.push(user);
+                    } else {
+                        console.log(`⏭️  Saltando ${user.email} - Sin sesión guardada`);
+                    }
+                } else {
+                    console.log(`⏭️  Saltando ${user.email} - Sin sesión guardada`);
+                }
+            } catch (err) {
+                console.log(`⏭️  Saltando ${user.email} - Error verificando sesión`);
+            }
+        }
+
+        console.log(`🔑 Encontrados ${usersWithSession.length} usuarios con sesión guardada de ${users.length} totales`);
+
         // INICIALIZACIÓN SECUENCIAL con delays para evitar condiciones de carrera
         let successCount = 0;
         let failCount = 0;
 
-        for (let i = 0; i < users.length; i++) {
-            const user = users[i];
+        for (let i = 0; i < usersWithSession.length; i++) {
+            const user = usersWithSession[i];
             try {
-                console.log(`[${i + 1}/${users.length}] Iniciando instancia para ${user.email}...`);
+                console.log(`[${i + 1}/${usersWithSession.length}] Iniciando instancia para ${user.email}...`);
 
                 const result = await whatsappInstanceManager.startInstance(
                     user.id,
@@ -55,22 +81,23 @@ async function startAllInstances() {
                     failCount++;
                 }
 
-                // Delay de 2 segundos entre cada inicio para evitar sobrecarga
-                if (i < users.length - 1) {
-                    await delay(2000);
+                // Delay de 1 segundo entre cada inicio (reducido porque ya tienen sesión)
+                if (i < usersWithSession.length - 1) {
+                    await delay(1000);
                 }
             } catch (error) {
                 console.error(`❌ Error iniciando instancia para ${user.email}:`, error.message);
                 failCount++;
 
                 // Delay más largo en caso de error para permitir recuperación
-                if (i < users.length - 1) {
-                    await delay(3000);
+                if (i < usersWithSession.length - 1) {
+                    await delay(2000);
                 }
             }
         }
 
         console.log(`✅ Inicialización completada: ${successCount} exitosas, ${failCount} fallidas`);
+        console.log(`ℹ️  ${users.length - usersWithSession.length} usuarios sin sesión fueron omitidos`);
     } catch (error) {
         console.error('❌ Error iniciando instancias:', error);
     }
@@ -83,19 +110,20 @@ async function cleanCorruptedSessions(users) {
 
     for (const user of users) {
         try {
-            const authPath = path.join(process.cwd(), 'auth_baileys', `user_${user.id}`);
+            // WPPConnect guarda sesiones en tokens/user_{id}
+            const tokensPath = path.join(process.cwd(), 'tokens', `user_${user.id}`);
 
-            // Verificar si existe la carpeta de autenticación
+            // Verificar si existe la carpeta de tokens
             try {
-                await fs.access(authPath);
+                await fs.access(tokensPath);
 
                 // Verificar si hay archivos de sesión
-                const files = await fs.readdir(authPath);
+                const files = await fs.readdir(tokensPath);
 
                 // Si la carpeta está vacía o solo tiene archivos temporales, eliminarla
                 if (files.length === 0 || files.every(f => f.startsWith('.'))) {
                     console.log(`🧹 Limpiando sesión vacía para usuario ${user.id}`);
-                    await fs.rm(authPath, { recursive: true, force: true });
+                    await fs.rm(tokensPath, { recursive: true, force: true });
                 }
             } catch (err) {
                 // La carpeta no existe, no hacer nada

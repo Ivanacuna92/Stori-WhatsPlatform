@@ -14,15 +14,12 @@ class FollowUpService {
     }
 
     /**
-     * Verifica si el socket de WhatsApp está conectado y listo
+     * Verifica si el cliente de WhatsApp está conectado y listo
      */
-    isSocketConnected(sock) {
+    isSocketConnected(client) {
         try {
-            return sock &&
-                   sock.user &&
-                   sock.user.id &&
-                   sock.ws &&
-                   sock.ws.readyState === 1; // WebSocket.OPEN
+            // WPPConnect: verificar si el cliente existe y está conectado
+            return client && typeof client.sendText === 'function';
         } catch (error) {
             return false;
         }
@@ -204,7 +201,9 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
 
 ¡Éxito! 👍`;
 
-                        await sock.sendMessage(followUp.chatId, { text: finalMessage });
+                        // WPPConnect usa client.sendText
+                        const formattedChatId = followUp.chatId.includes('@') ? followUp.chatId : `${followUp.chatId}@c.us`;
+                        await sock.sendText(formattedChatId, finalMessage);
                         await logger.log('BOT', finalMessage, userId);
                     } catch (error) {
                         console.error('Error enviando mensaje final:', error);
@@ -242,7 +241,9 @@ Quedo disponible si en el futuro necesitas multiplicar tu capacidad de atención
                             throw new Error('Socket desconectado');
                         }
 
-                        await sock.sendMessage(followUp.chatId, { text: followUpMessage });
+                        // WPPConnect usa client.sendText
+                        const formattedChatId = followUp.chatId.includes('@') ? followUp.chatId : `${followUp.chatId}@c.us`;
+                        await sock.sendText(formattedChatId, followUpMessage);
                         await logger.log('BOT', followUpMessage, userId);
 
                         messageSent = true;

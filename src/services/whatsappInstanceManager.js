@@ -1,7 +1,4 @@
-const makeWASocket = require('baileys').default;
-const { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('baileys');
-const qrcode = require('qrcode-terminal');
-const pino = require('pino');
+const wppconnect = require('@wppconnect-team/wppconnect');
 const database = require('./database');
 const logger = require('./logger');
 const aiService = require('./aiService');
@@ -18,9 +15,9 @@ class WhatsAppInstanceManager {
         this.instances = new Map(); // Map<supportUserId, instanceData>
         this.reconnectQueue = new Map(); // Map<supportUserId, queueData>
         this.globalReconnectCount = 0;
-        this.maxGlobalReconnects = 10; // Límite global para evitar ciclos infinitos
+        this.maxGlobalReconnects = 10;
         this.lastGlobalReconnectReset = Date.now();
-        this.globalReconnectWindow = 60000; // Resetear contador cada 60 segundos
+        this.globalReconnectWindow = 60000;
     }
 
     // Obtener todas las instancias activas
@@ -51,15 +48,14 @@ class WhatsAppInstanceManager {
 
     // Calcular delay con backoff exponencial
     calculateBackoffDelay(attemptNumber) {
-        const baseDelay = 3000; // 3 segundos base
-        const maxDelay = 60000; // 60 segundos máximo
+        const baseDelay = 3000;
+        const maxDelay = 60000;
         const delay = Math.min(baseDelay * Math.pow(2, attemptNumber - 1), maxDelay);
         return delay;
     }
 
     // Agregar a cola de reconexión con backoff
     scheduleReconnect(supportUserId, instanceName, attemptNumber) {
-        // Prevenir múltiples reconexiones en cola para el mismo usuario
         if (this.reconnectQueue.has(supportUserId)) {
             console.log(`⚠️  Usuario ${supportUserId} ya tiene una reconexión programada`);
             return;
@@ -93,79 +89,42 @@ class WhatsAppInstanceManager {
     // Crear/iniciar instancia para un usuario
     async startInstance(supportUserId, instanceName) {
         try {
-            // Resetear contador global si es necesario
             this.resetGlobalReconnectCountIfNeeded();
 
-            // Verificar límite global de reconexiones
             if (this.globalReconnectCount >= this.maxGlobalReconnects) {
                 console.log(`🛑 LÍMITE GLOBAL de reconexiones alcanzado (${this.globalReconnectCount}/${this.maxGlobalReconnects})`);
                 console.log(`⏳ Esperando ${this.globalReconnectWindow/1000}s antes de permitir más reconexiones`);
                 return null;
             }
 
-            console.log(`🚀 Iniciando instancia de WhatsApp para usuario ${supportUserId}...`);
+            console.log(`🚀 Iniciando instancia WPPConnect para usuario ${supportUserId}...`);
 
             // Verificar si ya existe una instancia activa
             if (this.instances.has(supportUserId)) {
                 const existing = this.instances.get(supportUserId);
 
-                // Si está conectada, no hacer nada
                 if (existing.status === 'connected') {
                     console.log(`✅ Instancia ya conectada para usuario ${supportUserId}`);
                     return existing;
                 }
 
-                // Si está en proceso de reconexión, no reintentar
                 if (existing.isReconnecting) {
                     console.log(`⏳ Instancia ya está reconectando para usuario ${supportUserId}`);
                     return existing;
                 }
 
-                // Si está desconectada y tiene reconexión programada, no hacer nada
                 if (this.reconnectQueue.has(supportUserId)) {
                     console.log(`⏳ Reconexión ya programada para usuario ${supportUserId}`);
                     return existing;
                 }
 
-                // Si existe pero está desconectada y SIN reconexión programada, la cerramos primero
                 console.log(`🔄 Cerrando instancia desconectada para usuario ${supportUserId}`);
                 await this.stopInstance(supportUserId);
             }
 
-            // Crear directorio de autenticación específico para este usuario
-            const authPath = path.join(process.cwd(), 'auth_baileys', `user_${supportUserId}`);
-            await fs.mkdir(authPath, { recursive: true });
-
-            // Configurar autenticación multi-archivo
-            const { state, saveCreds } = await useMultiFileAuthState(authPath);
-
-            // Obtener versión más reciente de Baileys
-            const { version, isLatest } = await fetchLatestBaileysVersion();
-            console.log(`Usando versión de WhatsApp Web: ${version.join('.')} (última: ${isLatest})`);
-
-            // Crear socket de WhatsApp
-            const sock = makeWASocket({
-                version,
-                auth: state,
-                printQRInTerminal: false,
-                logger: pino({ level: 'silent' }),
-                browser: ['Chrome (Linux)', '', ''],
-                generateHighQualityLinkPreview: false,
-                syncFullHistory: false,
-                getMessage: async () => ({ conversation: 'No disponible' }),
-                defaultQueryTimeoutMs: undefined,
-                connectTimeoutMs: 60000,
-                keepAliveIntervalMs: 30000,
-                qrTimeout: 300000, // 5 minutos (300,000 ms) - aumentado de ~2-3 min
-                markOnlineOnConnect: false,
-                msgRetryCounterCache: new Map(),
-                retryRequestDelayMs: 250,
-                maxMsgRetryCount: 5
-            });
-
-            // Datos de la instancia
+            // Datos de la instancia (se crearán antes de inicializar el cliente)
             const instanceData = {
-                sock,
+                client: null,
                 supportUserId,
                 instanceName,
                 status: 'disconnected',
@@ -174,263 +133,223 @@ class WhatsAppInstanceManager {
                 reconnectAttempts: 0,
                 maxReconnectAttempts: 3,
                 isReconnecting: false,
-                hasBeenConnected: false, // Flag para saber si alguna vez tuvo sesión válida
-                firstQrGenerated: false, // Flag para loguear solo el primer QR
-                qrRegenerationAttempts: 0, // Contador de regeneraciones de QR
-                maxQrRegenerations: 10 // Máximo de veces que regeneramos QR automáticamente
+                hasBeenConnected: false,
+                firstQrGenerated: false,
+                qrRegenerationAttempts: 0,
+                maxQrRegenerations: 10
             };
 
             this.instances.set(supportUserId, instanceData);
 
-            // Guardar credenciales cuando se actualicen
-            sock.ev.on('creds.update', saveCreds);
+            // Crear cliente WPPConnect con session única por usuario
+            const client = await wppconnect.create({
+                session: `user_${supportUserId}`,
+                headless: true,
+                devtools: false,
+                useChrome: true,
+                debug: false,
+                logQR: false,
+                autoClose: 15000, // Cerrar automáticamente después de 15 segundos si no hay conexión
+                browserArgs: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu'
+                ],
+                // Capturar QR
+                catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
+                    if (!instanceData.firstQrGenerated) {
+                        console.log(`📱 QR generado para usuario ${supportUserId} - Disponible en panel web`);
+                        instanceData.firstQrGenerated = true;
+                    }
 
-            // Manejar actualizaciones de conexión
-            sock.ev.on('connection.update', async (update) => {
-                await this.handleConnectionUpdate(supportUserId, update, authPath);
+                    instanceData.qr = base64Qr;
+                    instanceData.status = 'qr_ready';
+
+                    // Actualizar en BD
+                    this.updateInstanceInDB(supportUserId, {
+                        qr_code: base64Qr,
+                        status: 'qr_ready',
+                        last_qr_generated: new Date()
+                    }).catch(err => console.error('Error actualizando QR en BD:', err));
+                },
+                // Configurar directorio de sesión
+                folderNameToken: 'tokens',
+                mkdirFolderToken: '',
+                // Callbacks de estado
+                statusFind: (statusSession, session) => {
+                    console.log(`📊 Estado de sesión ${supportUserId}: ${statusSession}`);
+
+                    if (statusSession === 'isLogged' || statusSession === 'qrReadSuccess') {
+                        instanceData.status = 'connected';
+                        instanceData.hasBeenConnected = true;
+                        instanceData.firstQrGenerated = false;
+                        instanceData.reconnectAttempts = 0;
+                        instanceData.qrRegenerationAttempts = 0;
+
+                        console.log(`✅ WhatsApp conectado para usuario ${supportUserId}`);
+
+                        // Actualizar en BD
+                        this.updateInstanceInDB(supportUserId, {
+                            status: 'connected',
+                            qr_code: null,
+                            connected_at: new Date(),
+                            last_activity: new Date()
+                        }).catch(err => console.error('Error actualizando BD:', err));
+
+                        logger.log('SYSTEM', `Bot iniciado para usuario ${supportUserId}`, supportUserId, instanceName);
+                    } else if (statusSession === 'autocloseCalled' || statusSession === 'desconnectedMobile') {
+                        instanceData.status = 'disconnected';
+                        console.log(`❌ WhatsApp desconectado para usuario ${supportUserId}`);
+
+                        this.updateInstanceInDB(supportUserId, {
+                            status: 'disconnected'
+                        }).catch(err => console.error('Error actualizando BD:', err));
+                    }
+                }
             });
 
-            // Manejar actualizaciones de estado de mensajes
-            sock.ev.on('messages.update', async (updates) => {
-                await this.handleMessagesUpdate(supportUserId, updates);
+            // Guardar referencia al cliente
+            instanceData.client = client;
+
+            // Obtener información del teléfono conectado
+            try {
+                const hostDevice = await client.getHostDevice();
+                instanceData.phone = hostDevice.id.user;
+
+                await this.updateInstanceInDB(supportUserId, {
+                    phone_number: instanceData.phone
+                });
+            } catch (err) {
+                console.log(`⚠️ No se pudo obtener número de teléfono para usuario ${supportUserId}`);
+            }
+
+            // Event: Mensaje recibido
+            client.onMessage(async (message) => {
+                await this.handleIncomingMessage(supportUserId, message);
             });
 
-            // Manejar mensajes entrantes
-            sock.ev.on('messages.upsert', async (m) => {
-                await this.handleIncomingMessage(supportUserId, m);
+            // Event: ACK (confirmación de lectura/entrega)
+            client.onAck(async (ack) => {
+                await this.handleMessageAck(supportUserId, ack);
             });
 
             // Actualizar BD
             await this.updateInstanceInDB(supportUserId, {
                 instance_name: instanceName,
-                status: 'disconnected'
+                status: instanceData.status
             });
 
             return instanceData;
         } catch (error) {
             console.error(`Error iniciando instancia para usuario ${supportUserId}:`, error);
+
+            // Si falla, remover de instances
+            if (this.instances.has(supportUserId)) {
+                this.instances.delete(supportUserId);
+            }
+
             throw error;
         }
     }
 
-    // Manejar actualización de conexión
-    async handleConnectionUpdate(supportUserId, update, authPath) {
-        const { connection, lastDisconnect, qr } = update;
-        const instanceData = this.instances.get(supportUserId);
+    // Manejar ACK de mensajes
+    async handleMessageAck(supportUserId, ack) {
+        try {
+            const messageId = ack.id?.id;
+            if (!messageId) return;
 
-        if (!instanceData) return;
+            const userId = ack.to?.replace('@c.us', '');
 
-        if (qr) {
-            // Solo loguear el PRIMER QR generado (WhatsApp regenera QR cada ~30-60s)
-            if (!instanceData.firstQrGenerated) {
-                console.log(`📱 QR generado para usuario ${supportUserId} - Disponible en panel web`);
-                instanceData.firstQrGenerated = true;
+            let status = null;
+
+            // ACK states en WPPConnect:
+            // 0 = ACK_ERROR
+            // 1 = ACK_PENDING
+            // 2 = ACK_SERVER (enviado)
+            // 3 = ACK_DEVICE (entregado)
+            // 4 = ACK_READ (leído)
+            // 5 = ACK_PLAYED (reproducido)
+
+            if (ack.ack === 4) {
+                status = 'read';
+                console.log('🔵 LEÍDO detectado - ACK 4');
+            } else if (ack.ack === 3) {
+                status = 'delivered';
+                console.log('⚪ ENTREGADO detectado - ACK 3');
+            } else if (ack.ack === 2) {
+                status = 'sent';
+                console.log('⚪ ENVIADO detectado - ACK 2');
             }
 
-            instanceData.qr = qr;
-            instanceData.status = 'qr_ready';
-
-            // NO imprimir QR en terminal - disponible en panel web y BD
-            // qrcode.generate(qr, { small: true });
-
-            // Actualizar en BD (silenciosamente, WhatsApp regenera QRs automáticamente)
-            await this.updateInstanceInDB(supportUserId, {
-                qr_code: qr,
-                status: 'qr_ready',
-                last_qr_generated: new Date()
-            });
-        }
-
-        if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-            console.log(`❌ Conexión cerrada para usuario ${supportUserId}. Código: ${statusCode}, Estado: ${instanceData.status}, Ha estado conectado: ${instanceData.hasBeenConnected}`);
-
-            instanceData.status = 'disconnected';
-            instanceData.qr = null;
-
-            await this.updateInstanceInDB(supportUserId, {
-                status: 'disconnected',
-                qr_code: null
-            });
-
-            // CASO ESPECIAL: Timeout 408 en usuarios SIN sesión (esperando QR)
-            if (statusCode === 408 && !instanceData.hasBeenConnected) {
-                instanceData.qrRegenerationAttempts++;
-
-                if (instanceData.qrRegenerationAttempts > instanceData.maxQrRegenerations) {
-                    console.log(`⏸️  Usuario ${supportUserId} alcanzó límite de regeneraciones de QR (${instanceData.maxQrRegenerations}). Deteniendo.`);
-                    instanceData.isReconnecting = false;
-                    return;
-                }
-
-                console.log(`🔄 Regenerando QR para usuario ${supportUserId} (Intento ${instanceData.qrRegenerationAttempts}/${instanceData.maxQrRegenerations})`);
-                instanceData.isReconnecting = false;
-                instanceData.firstQrGenerated = false; // Permitir loguear el nuevo QR
-
-                // Regenerar QR después de 10 segundos
-                this.scheduleReconnect(supportUserId, instanceData.instanceName, 1);
-                return;
+            if (status && messageId) {
+                await logger.updateMessageStatus(messageId, status);
+                console.log(`✅ Estado actualizado (Usuario ${supportUserId}): ${messageId} -> ${status}`);
             }
-
-            // REGLA PRINCIPAL: Solo reconectar si la instancia ALGUNA VEZ tuvo una sesión válida conectada
-            if (!instanceData.hasBeenConnected) {
-                console.log(`⏸️  Usuario ${supportUserId} nunca ha tenido sesión conectada - NO reconectar (esperando escaneo QR)`);
-                instanceData.isReconnecting = false;
-                return;
-            }
-
-            // Si llegamos aquí, la instancia SÍ tuvo sesión válida antes - proceder con lógica de reconexión
-
-            if (statusCode === 405 || statusCode === 401 || statusCode === 403) {
-                // Errores de autenticación en sesión previamente válida
-                instanceData.reconnectAttempts++;
-                this.globalReconnectCount++;
-
-                if (instanceData.reconnectAttempts > instanceData.maxReconnectAttempts) {
-                    console.log(`❌ Máximo de intentos alcanzado para usuario ${supportUserId}`);
-                    instanceData.isReconnecting = false;
-                    await logger.log('ERROR', `Instancia ${supportUserId} alcanzó límite de reconexiones`, supportUserId);
-                    return;
-                }
-
-                console.log(`🔄 Limpiando sesión para usuario ${supportUserId}... (Intento ${instanceData.reconnectAttempts}/${instanceData.maxReconnectAttempts})`);
-                await this.clearSession(authPath);
-
-                instanceData.isReconnecting = false;
-                instanceData.hasBeenConnected = false; // Resetear flag porque limpiamos sesión
-
-                // Usar backoff exponencial
-                this.scheduleReconnect(supportUserId, instanceData.instanceName, instanceData.reconnectAttempts);
-            } else if (shouldReconnect && statusCode !== DisconnectReason.loggedOut) {
-                // Desconexión inesperada de sesión válida
-                console.log(`🔄 Reconectando usuario ${supportUserId} - desconexión inesperada de sesión activa`);
-                instanceData.reconnectAttempts = 0;
-                instanceData.isReconnecting = false;
-                this.globalReconnectCount++;
-
-                // Usar backoff exponencial
-                this.scheduleReconnect(supportUserId, instanceData.instanceName, 1);
-            } else {
-                // No reconectar en otros casos
-                console.log(`⏸️  Usuario ${supportUserId} - No se cumplieron condiciones para reconectar`);
-                instanceData.isReconnecting = false;
-            }
-        } else if (connection === 'open') {
-            console.log(`✅ WhatsApp conectado para usuario ${supportUserId}`);
-
-            // Cancelar cualquier reconexión programada
-            this.cancelScheduledReconnect(supportUserId);
-
-            instanceData.status = 'connected';
-            instanceData.qr = null;
-            instanceData.reconnectAttempts = 0;
-            instanceData.qrRegenerationAttempts = 0; // Resetear contador de QR
-            instanceData.isReconnecting = false;
-            instanceData.hasBeenConnected = true; // Marcar que tuvo sesión válida
-            instanceData.firstQrGenerated = false; // Resetear para futuras desconexiones
-
-            // Obtener número de teléfono
-            const phoneNumber = instanceData.sock.user?.id?.split(':')[0] || null;
-            instanceData.phone = phoneNumber;
-
-            await this.updateInstanceInDB(supportUserId, {
-                status: 'connected',
-                qr_code: null,
-                phone_number: phoneNumber,
-                connected_at: new Date(),
-                last_activity: new Date()
-            });
-
-            await logger.log('SYSTEM', `Bot iniciado para usuario ${supportUserId}`, supportUserId, instanceData.instanceName);
-        }
-    }
-
-    // Manejar actualizaciones de estado de mensajes
-    async handleMessagesUpdate(supportUserId, updates) {
-        for (const update of updates) {
-            try {
-                const messageId = update.key.id;
-                const userId = update.key.remoteJid?.replace('@s.whatsapp.net', '');
-
-                let status = null;
-
-                if (update.update.status === 4) {
-                    status = 'read';
-                } else if (update.update.status === 2) {
-                    status = 'delivered';
-                } else if (update.update.status === 1) {
-                    status = 'sent';
-                }
-
-                if (status && messageId) {
-                    await logger.updateMessageStatus(messageId, status);
-                    console.log(`✅ Estado actualizado (Usuario ${supportUserId}): ${messageId} -> ${status}`);
-                }
-            } catch (error) {
-                console.error('Error actualizando estado de mensaje:', error);
-            }
+        } catch (error) {
+            console.error('Error actualizando estado de mensaje:', error);
         }
     }
 
     // Manejar mensaje entrante
-    async handleIncomingMessage(supportUserId, m) {
+    async handleIncomingMessage(supportUserId, message) {
         try {
-            const msg = m.messages[0];
-            if (!msg.message) return;
-
-            const instanceData = this.instances.get(supportUserId);
-            if (!instanceData || !instanceData.sock) return;
-
             // Ignorar mensajes propios
-            if (msg.key.fromMe) return;
-
-            const from = msg.key.remoteJid;
-
-            // ===============================================
-            // FILTRO ESTRICTO: SOLO CONTACTOS INDIVIDUALES
-            // ===============================================
-            // Solo procesar mensajes de contactos directos (@s.whatsapp.net)
-            // IGNORAR TODO LO DEMÁS sin excepción
-
-            const isIndividualContact = from && from.endsWith('@s.whatsapp.net');
-
-            if (!isIndividualContact) {
-                // Identificar tipo de origen para logging
-                let tipo = 'desconocido';
-                if (from.endsWith('@g.us')) tipo = 'grupo';
-                else if (from === 'status@broadcast' || from.includes('broadcast')) tipo = 'estado/broadcast';
-                else if (from.includes('newsletter') || from.includes('@newsletter')) tipo = 'newsletter/canal';
-                else if (from.includes('@channel') || from.includes('channel')) tipo = 'canal';
-                else if (from.includes('@lid')) tipo = 'comunidad';
-                else if (from.includes('@g.')) tipo = 'grupo/comunidad';
-
-                console.log(`📛 Mensaje ignorado [${tipo}]: ${from}`);
-                return; // SALIR INMEDIATAMENTE - No procesar ni registrar nada
-            }
-
-            // Si llegamos aquí, es un contacto individual válido (@s.whatsapp.net)
-            console.log(`✅ Mensaje de contacto individual: ${from}`);
-
-            const conversation = msg.message.conversation ||
-                               msg.message.extendedTextMessage?.text ||
-                               '';
-
-            if (!conversation || conversation.trim() === '') {
-                console.log('Mensaje ignorado - Sin contenido de texto');
+            if (message.isGroupMsg || message.fromMe) {
                 return;
             }
 
-            // Solo chats individuales
-            const userId = from.replace('@s.whatsapp.net', '');
-            const userName = msg.pushName || userId;
+            const instanceData = this.instances.get(supportUserId);
+            if (!instanceData || !instanceData.client) return;
+
+            const from = message.from;
+
+            // Solo procesar mensajes de contactos individuales (@c.us)
+            const isIndividualContact = from && from.endsWith('@c.us');
+
+            if (!isIndividualContact) {
+                let tipo = 'desconocido';
+                if (from.endsWith('@g.us')) tipo = 'grupo';
+                else if (from.includes('broadcast')) tipo = 'broadcast';
+                else if (from.includes('status')) tipo = 'estado';
+
+                console.log(`📛 Mensaje ignorado [${tipo}]: ${from}`);
+                return;
+            }
+
+            console.log(`✅ Mensaje de contacto individual: ${from}`);
+
+            const userId = from.replace('@c.us', '');
+            const userName = message.sender.pushname || message.sender.name || userId;
+
+            // Extraer contenido del mensaje
+            let conversation = '';
+
+            if (message.type === 'chat') {
+                conversation = message.body || '';
+            } else if (message.type === 'image' || message.type === 'document' || message.type === 'ptt' || message.type === 'video') {
+                // Media messages - solo registrar que se recibió media
+                conversation = message.caption || `[${message.type}]`;
+
+                // TODO: Implementar descarga y guardado de media si es necesario
+                // const mediaData = await message.downloadMedia();
+            } else {
+                console.log(`⚠️ Tipo de mensaje no soportado: ${message.type}`);
+                return;
+            }
+
+            if (!conversation || conversation.trim() === '') {
+                console.log('Mensaje ignorado - Sin contenido');
+                return;
+            }
 
             // VERIFICAR SI EL CLIENTE ESTÁ ASIGNADO A OTRO USUARIO DE SOPORTE
             const existingAssignment = await this.getClientAssignment(userId);
 
             if (existingAssignment && existingAssignment.support_user_id !== supportUserId) {
-                // Este cliente está asignado a otro usuario de soporte, ignorar el mensaje
                 console.log(`⏭️  Mensaje ignorado: Cliente ${userId} está asignado a usuario ${existingAssignment.support_user_id}, no a ${supportUserId}`);
                 return;
             }
@@ -438,11 +357,10 @@ class WhatsAppInstanceManager {
             // Log del mensaje
             await logger.log('cliente', conversation, userId, userName, false, supportUserId);
 
-            // Asignar cliente a este usuario de soporte si no está asignado (solo chats individuales)
+            // Asignar cliente a este usuario de soporte si no está asignado
             await this.assignClientToUser(userId, supportUserId, false, null);
 
             // YA NO HAY IA - Solo registrar el mensaje entrante
-            // Los humanos responderán manualmente desde el panel
             await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId}) - Esperando respuesta humana`, supportUserId);
 
             // Cancelar seguimiento si existe
@@ -455,7 +373,7 @@ class WhatsAppInstanceManager {
         }
     }
 
-    // Procesar mensaje y generar respuesta
+    // Procesar mensaje y generar respuesta (para futuro uso con IA)
     async processMessage(supportUserId, userId, userMessage, chatId) {
         await sessionManager.addMessage(userId, 'user', userMessage, chatId);
 
@@ -482,7 +400,7 @@ class WhatsAppInstanceManager {
         return aiResponse;
     }
 
-    // Obtener asignación de cliente (si existe)
+    // Obtener asignación de cliente
     async getClientAssignment(clientPhone) {
         try {
             return await database.findOne(
@@ -499,11 +417,9 @@ class WhatsAppInstanceManager {
     // Asignar cliente a usuario de soporte
     async assignClientToUser(clientPhone, supportUserId, isGroup = false, groupName = null) {
         try {
-            // Verificar si el cliente ya está asignado a CUALQUIER usuario
             const existingAssignment = await this.getClientAssignment(clientPhone);
 
             if (existingAssignment) {
-                // Solo actualizar last_message_at si es el mismo usuario
                 if (existingAssignment.support_user_id === supportUserId) {
                     await database.update(
                         'client_assignments',
@@ -513,11 +429,9 @@ class WhatsAppInstanceManager {
                     );
                     console.log(`✅ Actualizada última actividad para cliente ${clientPhone} (Usuario ${supportUserId})`);
                 } else {
-                    // Cliente asignado a otro usuario, no hacer nada
                     console.log(`⚠️  Cliente ${clientPhone} ya está asignado a usuario ${existingAssignment.support_user_id}`);
                 }
             } else {
-                // Cliente nuevo, crear asignación
                 await database.insert('client_assignments', {
                     client_phone: clientPhone,
                     support_user_id: supportUserId,
@@ -540,11 +454,14 @@ class WhatsAppInstanceManager {
 
             console.log(`🛑 Deteniendo instancia para usuario ${supportUserId}...`);
 
-            // Cancelar cualquier reconexión programada
             this.cancelScheduledReconnect(supportUserId);
 
-            if (instanceData.sock) {
-                instanceData.sock.end();
+            if (instanceData.client) {
+                try {
+                    await instanceData.client.close();
+                } catch (err) {
+                    console.log('Error cerrando cliente:', err.message);
+                }
             }
 
             this.instances.delete(supportUserId);
@@ -559,9 +476,10 @@ class WhatsAppInstanceManager {
     }
 
     // Limpiar sesión
-    async clearSession(authPath) {
+    async clearSession(sessionName) {
         try {
-            await fs.rm(authPath, { recursive: true, force: true });
+            const tokensPath = path.join(process.cwd(), 'tokens', sessionName);
+            await fs.rm(tokensPath, { recursive: true, force: true });
             console.log('Sesión eliminada correctamente');
         } catch (err) {
             console.log('No había sesión previa o ya fue eliminada');
@@ -572,33 +490,46 @@ class WhatsAppInstanceManager {
     async logoutInstance(supportUserId) {
         try {
             const instanceData = this.instances.get(supportUserId);
-            if (!instanceData) return false;
 
             console.log(`🚪 Cerrando sesión de WhatsApp para usuario ${supportUserId}...`);
 
-            if (instanceData.sock) {
+            // Si hay instancia activa, intentar cerrar el cliente
+            if (instanceData && instanceData.client) {
                 try {
-                    await instanceData.sock.logout();
+                    await instanceData.client.logout();
                 } catch (err) {
-                    console.log('Error al hacer logout:', err.message);
+                    console.log('Error al hacer logout del cliente:', err.message);
                 }
             }
 
-            const authPath = path.join(process.cwd(), 'auth_baileys', `user_${supportUserId}`);
-            await this.clearSession(authPath);
+            // Siempre limpiar la sesión guardada
+            await this.clearSession(`user_${supportUserId}`);
 
+            // Actualizar BD
             await this.updateInstanceInDB(supportUserId, {
                 status: 'disconnected',
                 qr_code: null,
                 phone_number: null
             });
 
+            // Obtener nombre de instancia de BD si no hay en memoria
+            let instanceName = 'Usuario';
+            if (instanceData) {
+                instanceName = instanceData.instanceName;
+            } else {
+                const dbInstance = await this.getInstanceFromDB(supportUserId);
+                if (dbInstance) {
+                    instanceName = dbInstance.instance_name;
+                }
+            }
+
             // Reiniciar instancia
-            setTimeout(() => this.startInstance(supportUserId, instanceData.instanceName), 2000);
+            console.log(`🔄 Reiniciando instancia para usuario ${supportUserId} en 2 segundos...`);
+            setTimeout(() => this.startInstance(supportUserId, instanceName), 2000);
             return true;
         } catch (error) {
             console.error(`Error al cerrar sesión ${supportUserId}:`, error);
-            return false;
+            throw error; // Lanzar error para que el endpoint lo capture
         }
     }
 
@@ -641,8 +572,8 @@ class WhatsAppInstanceManager {
             throw new Error('Instancia no disponible');
         }
 
-        if (!instanceData.sock) {
-            console.log('❌ [INSTANCE-MANAGER] Instancia sin sock para usuario:', supportUserId);
+        if (!instanceData.client) {
+            console.log('❌ [INSTANCE-MANAGER] Instancia sin cliente para usuario:', supportUserId);
             throw new Error('Instancia no disponible');
         }
 
@@ -653,13 +584,41 @@ class WhatsAppInstanceManager {
             throw new Error('WhatsApp no está conectado');
         }
 
-        const chatId = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        // WPPConnect usa @c.us para contactos individuales
+        const chatId = to.includes('@') ? to : `${to}@c.us`;
         console.log('📤 [INSTANCE-MANAGER] ChatId final:', chatId);
         console.log('📤 [INSTANCE-MANAGER] Enviando mensaje...');
 
-        const result = await instanceData.sock.sendMessage(chatId, { text: message });
+        const result = await instanceData.client.sendText(chatId, message);
 
         console.log('✅ [INSTANCE-MANAGER] Mensaje enviado exitosamente');
+        return result;
+    }
+
+    // Enviar media desde una instancia específica
+    async sendMedia(supportUserId, to, mediaPath, caption = '', mimetype = '') {
+        const instanceData = this.instances.get(supportUserId);
+
+        if (!instanceData || !instanceData.client) {
+            throw new Error('Instancia no disponible');
+        }
+
+        if (instanceData.status !== 'connected') {
+            throw new Error('WhatsApp no está conectado');
+        }
+
+        const chatId = to.includes('@') ? to : `${to}@c.us`;
+
+        // WPPConnect maneja archivos directamente con sendFile
+        const result = await instanceData.client.sendFile(
+            chatId,
+            mediaPath,
+            {
+                caption: caption,
+                mimetype: mimetype
+            }
+        );
+
         return result;
     }
 

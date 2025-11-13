@@ -13,20 +13,9 @@ function MySession() {
   const qrcodeRef = useRef(null);
 
   useEffect(() => {
-    // Cargar librería QRCode si no está disponible
-    if (!window.QRCode) {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-      script.async = true;
-      script.onload = () => {
-        checkQR();
-        intervalRef.current = setInterval(checkQR, 3000);
-      };
-      document.body.appendChild(script);
-    } else {
-      checkQR();
-      intervalRef.current = setInterval(checkQR, 3000);
-    }
+    // Iniciar polling de QR
+    checkQR();
+    intervalRef.current = setInterval(checkQR, 3000);
 
     return () => {
       if (intervalRef.current) {
@@ -47,20 +36,18 @@ function MySession() {
         setQrData(data.qr);
         setPhoneNumber(data.phone);
 
-        // Generar QR Code
-        if (qrCanvasRef.current && window.QRCode) {
+        // WPPConnect devuelve QR en base64, mostrar como imagen directamente
+        if (qrCanvasRef.current) {
           // Limpiar canvas anterior
           qrCanvasRef.current.innerHTML = '';
 
-          // Crear nuevo QR
-          qrcodeRef.current = new window.QRCode(qrCanvasRef.current, {
-            text: data.qr,
-            width: 256,
-            height: 256,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: window.QRCode?.CorrectLevel?.M || 0
-          });
+          // Crear elemento img para mostrar QR base64
+          const img = document.createElement('img');
+          img.src = data.qr; // WPPConnect ya devuelve "data:image/png;base64,..."
+          img.style.width = '256px';
+          img.style.height = '256px';
+          img.alt = 'QR Code';
+          qrCanvasRef.current.appendChild(img);
         }
       } else if (data.status === 'connected') {
         setStatus('connected');

@@ -699,15 +699,16 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 // Formatear el número de teléfono para WhatsApp
                 let formattedPhone = phone;
                 if (!phone.includes('@')) {
-                    formattedPhone = `${phone}@s.whatsapp.net`;
+                    formattedPhone = `${phone}@c.us`; // whatsapp-web.js usa @c.us
                 }
 
                 // Enviar mensaje de finalización
                 const endMessage = '⏰ Tu sesión de conversación ha finalizado. Puedes escribirme nuevamente para iniciar una nueva conversación.';
-                await global.whatsappBot.sock.sendMessage(formattedPhone, { text: endMessage });
+                // WPPConnect usa client.sendText para mensajes de texto
+                await global.whatsappBot.client.sendText(formattedPhone, endMessage);
 
                 // Registrar el mensaje de finalización en los logs como mensaje del BOT
-                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                const cleanPhone = phone.replace('@c.us', '').replace('@g.us', '');
                 const isGroup = phone.includes('@g.us') || formattedPhone.includes('@g.us');
                 logger.log('BOT', endMessage, cleanPhone, null, isGroup);
 
@@ -967,39 +968,26 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 // Formatear el número de teléfono
                 let formattedPhone = phone;
                 if (!phone.includes('@')) {
-                    formattedPhone = `${phone}@s.whatsapp.net`;
+                    formattedPhone = `${phone}@c.us`; // whatsapp-web.js usa @c.us
                 }
 
                 // Enviar archivo por WhatsApp
                 let sentMsg;
                 const mediaPath = savedMedia.filepath;
 
-                if (savedMedia.mediaType === 'images') {
-                    // Enviar imagen
-                    sentMsg = await global.whatsappBot.sock.sendMessage(formattedPhone, {
-                        image: { url: mediaPath },
-                        caption: caption || ''
-                    });
-                } else if (savedMedia.mediaType === 'documents') {
-                    // Enviar documento
-                    sentMsg = await global.whatsappBot.sock.sendMessage(formattedPhone, {
-                        document: { url: mediaPath },
-                        mimetype: savedMedia.mimetype,
-                        fileName: file.originalname || savedMedia.filename,
-                        caption: caption || ''
-                    });
-                } else {
-                    return res.status(400).json({
-                        error: 'Unsupported media type',
-                        details: 'Tipo de archivo no soportado'
-                    });
-                }
+                // WPPConnect usa sendFile para archivos (imágenes y documentos)
+                sentMsg = await global.whatsappBot.client.sendFile(
+                    formattedPhone,
+                    mediaPath,
+                    file.originalname || savedMedia.filename,
+                    caption || ''
+                );
 
-                const messageId = sentMsg?.key?.id;
+                const messageId = sentMsg?.id;
 
                 // Registrar en logs
                 const senderName = req.user ? req.user.name : 'Soporte';
-                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                const cleanPhone = phone.replace('@c.us', '').replace('@g.us', '');
                 const isGroup = phone.includes('@g.us') || formattedPhone.includes('@g.us');
 
                 const mediaInfo = {
@@ -1074,16 +1062,17 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 let formattedPhone = phone;
                 if (!phone.includes('@')) {
                     // Por defecto asumir chat privado, pero esto debería venir del frontend
-                    formattedPhone = `${phone}@s.whatsapp.net`;
+                    formattedPhone = `${phone}@c.us`; // whatsapp-web.js usa @c.us
                 }
 
                 // Enviar mensaje através del cliente de WhatsApp y capturar messageId
-                const sentMsg = await global.whatsappBot.sock.sendMessage(formattedPhone, { text: message });
-                const messageId = sentMsg?.key?.id;
+                // WPPConnect usa client.sendText para mensajes de texto
+                const sentMsg = await global.whatsappBot.client.sendText(formattedPhone, message);
+                const messageId = sentMsg?.id;
 
                 // Registrar el mensaje enviado por el humano con el nombre del usuario
                 const senderName = req.user ? req.user.name : 'Soporte';
-                const cleanPhone = phone.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                const cleanPhone = phone.replace('@c.us', '').replace('@g.us', '');
                 const isGroup = phone.includes('@g.us') || formattedPhone.includes('@g.us');
                 // Usar 'soporte' como role para la base de datos
                 await logger.log('soporte', message, cleanPhone, senderName, isGroup, null, null, messageId);
