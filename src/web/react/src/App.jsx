@@ -122,7 +122,7 @@ function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navetec-primary"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           <span className="text-gray-600">Verificando autenticación...</span>
         </div>
       </div>
