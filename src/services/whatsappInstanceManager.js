@@ -9,6 +9,7 @@ const followUpService = require('./followUpService');
 const systemConfigService = require('./systemConfigService');
 const path = require('path');
 const fs = require('fs').promises;
+const { exec } = require('child_process');
 
 class WhatsAppInstanceManager {
     constructor() {
@@ -18,6 +19,22 @@ class WhatsAppInstanceManager {
         this.maxGlobalReconnects = 10;
         this.lastGlobalReconnectReset = Date.now();
         this.globalReconnectWindow = 60000;
+    }
+
+    // Matar procesos zombie de Chrome del proyecto antes de iniciar
+    async killZombieChrome() {
+        return new Promise((resolve) => {
+            const tokensPath = path.join(process.cwd(), 'tokens');
+            const cmd = `pkill -f "user-data-dir=${tokensPath}" 2>/dev/null || true`;
+
+            exec(cmd, (error, stdout, stderr) => {
+                if (!error) {
+                    console.log('🧹 Procesos zombie de Chrome limpiados');
+                }
+                // Esperar un momento para que los procesos terminen
+                setTimeout(resolve, 1000);
+            });
+        });
     }
 
     // Obtener todas las instancias activas
@@ -142,6 +159,7 @@ class WhatsAppInstanceManager {
             this.instances.set(supportUserId, instanceData);
 
             // Crear cliente WPPConnect con session única por usuario
+            const sessionPath = path.join(process.cwd(), 'tokens', `user_${supportUserId}`);
             const client = await wppconnect.create({
                 session: `user_${supportUserId}`,
                 headless: true,
@@ -159,6 +177,10 @@ class WhatsAppInstanceManager {
                     '--no-zygote',
                     '--disable-gpu'
                 ],
+                // Forzar directorio específico para este usuario
+                puppeteerOptions: {
+                    userDataDir: sessionPath
+                },
                 // Capturar QR
                 catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
                     if (!instanceData.firstQrGenerated) {
@@ -536,6 +558,11 @@ class WhatsAppInstanceManager {
     // Actualizar datos de instancia en BD
     async updateInstanceInDB(supportUserId, data) {
         try {
+            // Filtrar valores undefined (MySQL no acepta undefined, solo null)
+            const cleanData = Object.fromEntries(
+                Object.entries(data).map(([key, value]) => [key, value === undefined ? null : value])
+            );
+
             const existing = await database.findOne(
                 'whatsapp_instances',
                 'support_user_id = ?',
@@ -545,14 +572,14 @@ class WhatsAppInstanceManager {
             if (existing) {
                 await database.update(
                     'whatsapp_instances',
-                    data,
+                    cleanData,
                     'support_user_id = ?',
                     [supportUserId]
                 );
             } else {
                 await database.insert('whatsapp_instances', {
                     support_user_id: supportUserId,
-                    ...data
+                    ...cleanData
                 });
             }
         } catch (error) {

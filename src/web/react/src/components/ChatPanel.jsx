@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMyMessage, toggleHumanMode, endConversation, deleteConversation, leaveGroup, archiveConversation, unarchiveConversation } from '../services/api';
+import { sendMyMessage, toggleHumanMode, deleteConversation, leaveGroup, archiveConversation, unarchiveConversation } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MediaMessage from './MediaMessage';
@@ -7,8 +7,6 @@ import MediaMessage from './MediaMessage';
 function ChatPanel({ contact, onUpdateContact }) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
-  const [showEndModal, setShowEndModal] = useState(false);
-  const [endingConversation, setEndingConversation] = useState(false);
   const [supportHandledContacts, setSupportHandledContacts] = useState(new Set());
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
@@ -192,33 +190,6 @@ function ChatPanel({ contact, onUpdateContact }) {
   };
 
 
-  const handleEndConversation = async () => {
-    setEndingConversation(true);
-
-    try {
-      await endConversation(contact.phone);
-
-      // Agregar mensaje de sistema a la conversación
-      const systemMessage = {
-        type: 'SYSTEM',
-        message: '⏰ Tu sesión de conversación ha finalizado. Puedes escribirme nuevamente para iniciar una nueva conversación.',
-        timestamp: new Date().toISOString()
-      };
-
-      onUpdateContact({
-        ...contact,
-        messages: [...(contact.messages || []), systemMessage],
-        isHumanMode: false
-      });
-
-      setShowEndModal(false);
-      setEndingConversation(false);
-    } catch (error) {
-      setEndingConversation(false);
-      alert('Error finalizando conversación: ' + error.message);
-    }
-  };
-
   const handleArchiveConversation = async () => {
     setArchiving(true);
     setShowOptionsMenu(false);
@@ -332,7 +303,7 @@ function ChatPanel({ contact, onUpdateContact }) {
           </div>
         </div>
 
-        {/* Botones de acción - Solo finalizar chat */}
+        {/* Botones de acción */}
         <div className="flex items-center gap-2">
           {isSupport && (
             <button
@@ -360,15 +331,6 @@ function ChatPanel({ contact, onUpdateContact }) {
               Finalizar Soporte
             </button>
           )}
-          <button
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all"
-            style={{ background: '#EF4444' }}
-            onMouseEnter={(e) => e.target.style.background = '#DC2626'}
-            onMouseLeave={(e) => e.target.style.background = '#EF4444'}
-            onClick={() => setShowEndModal(true)}
-          >
-            Finalizar Chat
-          </button>
 
           {/* Botón de menú de opciones (3 puntos) */}
           <div className="relative" ref={optionsMenuRef}>
@@ -845,55 +807,6 @@ function ChatPanel({ contact, onUpdateContact }) {
                 onMouseLeave={(e) => e.target.style.background = '#F97316'}
               >
                 Tomar Control
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de confirmación finalizar */}
-      {showEndModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" style={{
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)'
-          }}>
-            <h3 className="text-xl font-semibold mb-3 text-gray-800">
-              Finalizar Conversación
-            </h3>
-            <p className="text-sm text-gray-500 mb-6">
-              ¿Estás seguro de que deseas finalizar esta conversación? Se enviará un mensaje de cierre al cliente y la sesión cambiará a modo IA.
-            </p>
-            <div className="rounded-xl p-4 mb-6" style={{
-              background: 'rgba(245, 158, 11, 0.08)',
-              border: '1px solid rgba(245, 158, 11, 0.2)'
-            }}>
-              <p className="text-sm text-gray-700">
-                Se enviará al cliente: <strong>"⏰ Tu sesión de conversación ha finalizado. Puedes escribirme nuevamente para iniciar una nueva conversación."</strong>
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowEndModal(false)}
-                disabled={endingConversation}
-                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-50"
-                style={{
-                  background: '#F3F4F6',
-                  color: '#6B7280'
-                }}
-                onMouseEnter={(e) => !endingConversation && (e.target.style.background = '#E5E7EB')}
-                onMouseLeave={(e) => !endingConversation && (e.target.style.background = '#F3F4F6')}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleEndConversation}
-                disabled={endingConversation}
-                className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ background: '#EF4444' }}
-                onMouseEnter={(e) => !endingConversation && (e.target.style.background = '#DC2626')}
-                onMouseLeave={(e) => !endingConversation && (e.target.style.background = '#EF4444')}
-              >
-                {endingConversation ? 'Finalizando...' : 'Finalizar'}
               </button>
             </div>
           </div>

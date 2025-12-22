@@ -1,11 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { getMyContacts, toggleHumanMode, getArchivedConversations } from '../services/api';
+import { getMyContacts, toggleHumanMode, getArchivedConversations, addContact, updateContactName } from '../services/api';
 
 function ContactsList({ contacts, setContacts, selectedContact, onSelectContact }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedUserIds, setArchivedUserIds] = useState(new Set());
+  const [showNewContactModal, setShowNewContactModal] = useState(false);
+  const [newContactPhone, setNewContactPhone] = useState('521');
+  const [newContactName, setNewContactName] = useState('');
+  const [addingContact, setAddingContact] = useState(false);
+  const [addContactError, setAddContactError] = useState('');
+  const [editingContact, setEditingContact] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [savingName, setSavingName] = useState(false);
   const [lastReadMessages, setLastReadMessages] = useState(() => {
     // Cargar del localStorage al iniciar
     const saved = localStorage.getItem('lastReadMessages');
@@ -123,10 +131,79 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
     onSelectContact(contact);
   };
 
+  const handleAddContact = async () => {
+    if (!newContactPhone.trim()) {
+      setAddContactError('Ingresa un número de teléfono');
+      return;
+    }
+
+    setAddingContact(true);
+    setAddContactError('');
+
+    try {
+      const result = await addContact(newContactPhone.trim(), newContactName.trim() || null);
+
+      // Cerrar modal y limpiar
+      setShowNewContactModal(false);
+      setNewContactPhone('521');
+      setNewContactName('');
+
+      // Recargar contactos
+      await loadContacts();
+
+      // Seleccionar el nuevo contacto
+      const newContact = contacts.find(c => c.phone === result.phone);
+      if (newContact) {
+        handleSelectContact(newContact);
+      }
+    } catch (error) {
+      setAddContactError(error.message);
+    } finally {
+      setAddingContact(false);
+    }
+  };
+
   const getUnreadCount = (contact) => {
     const lastRead = lastReadMessages[contact.phone] || 0;
     const unreadCount = contact.messages.length - lastRead;
     return unreadCount > 0 ? unreadCount : 0;
+  };
+
+  const handleEditName = (contact, e) => {
+    e.stopPropagation();
+    setEditingContact(contact);
+    setEditName(contact.name !== contact.phone ? contact.name : '');
+  };
+
+  const handleSaveName = async () => {
+    if (!editingContact) return;
+
+    setSavingName(true);
+    try {
+      await updateContactName(editingContact.phone, editName);
+
+      // Actualizar localmente
+      setContacts(prev => prev.map(c =>
+        c.phone === editingContact.phone
+          ? { ...c, name: editName.trim() || c.phone }
+          : c
+      ));
+
+      // Si es el contacto seleccionado, actualizarlo también
+      if (selectedContact?.phone === editingContact.phone) {
+        onSelectContact({
+          ...selectedContact,
+          name: editName.trim() || selectedContact.phone
+        });
+      }
+
+      setEditingContact(null);
+      setEditName('');
+    } catch (error) {
+      console.error('Error guardando nombre:', error);
+    } finally {
+      setSavingName(false);
+    }
   };
 
   const filteredContacts = contacts
@@ -142,7 +219,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
       const searchLower = searchTerm.toLowerCase();
 
       // Buscar en el número de teléfono o nombre de grupo
-      const contactName = contact.isGroup ? (contact.groupName || contact.phone) : contact.phone;
+      const contactName = contact.name || contact.phone;
       if (contactName.toLowerCase().includes(searchLower)) {
         return true;
       }
@@ -185,9 +262,26 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
       {/* Header estilo moderno */}
       <div className="p-6 pb-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-800">
-            {showArchived ? 'Archivadas' : 'Conversaciones'}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-gray-800">
+              {showArchived ? 'Archivadas' : 'Conversaciones'}
+            </h2>
+            {!showArchived && (
+              <button
+                onClick={() => setShowNewContactModal(true)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)',
+                  boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
+                }}
+                title="Nueva conversación"
+              >
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+            )}
+          </div>
           <button
             onClick={() => setShowArchived(!showArchived)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
@@ -325,9 +419,20 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                 {/* Info del contacto */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className={`text-sm truncate ${contact.leftGroup ? 'text-gray-400' : getUnreadCount(contact) > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
-                      {contact.isGroup ? (contact.groupName || contact.phone) : contact.phone}
-                    </span>
+                    <div className="flex items-center gap-1 min-w-0 group/name">
+                      <span className={`text-sm truncate ${contact.leftGroup ? 'text-gray-400' : getUnreadCount(contact) > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
+                        {contact.name && contact.name !== contact.phone ? contact.name : contact.phone}
+                      </span>
+                      <button
+                        onClick={(e) => handleEditName(contact, e)}
+                        className="opacity-0 group-hover/name:opacity-100 p-1 rounded hover:bg-gray-200 transition-all flex-shrink-0"
+                        title="Editar nombre"
+                      >
+                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                    </div>
                     <div className="flex items-center gap-1.5">
                       {contact.leftGroup ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
@@ -367,6 +472,172 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
           ))
         )}
       </div>
+
+      {/* Modal Nueva Conversación */}
+      {showNewContactModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-96 max-w-[90vw] overflow-hidden">
+            {/* Header del modal */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-800">Nueva conversación</h3>
+                <button
+                  onClick={() => {
+                    setShowNewContactModal(false);
+                    setNewContactPhone('521');
+                    setNewContactName('');
+                    setAddContactError('');
+                  }}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido del modal */}
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Número de teléfono *
+                </label>
+                <input
+                  type="tel"
+                  value={newContactPhone}
+                  onChange={(e) => setNewContactPhone(e.target.value)}
+                  placeholder="5217712345678"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#f7c06f] focus:ring-2 focus:ring-[#f7c06f]/20 focus:outline-none transition-all text-sm"
+                  autoFocus
+                />
+                <p className="mt-1.5 text-xs text-gray-400">
+                  521 + 10 dígitos del celular (ej: 5217712345678)
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nombre (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={newContactName}
+                  onChange={(e) => setNewContactName(e.target.value)}
+                  placeholder="Nombre del contacto"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#f7c06f] focus:ring-2 focus:ring-[#f7c06f]/20 focus:outline-none transition-all text-sm"
+                />
+              </div>
+
+              {addContactError && (
+                <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100">
+                  <p className="text-sm text-red-600">{addContactError}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer del modal */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowNewContactModal(false);
+                  setNewContactPhone('521');
+                  setNewContactName('');
+                  setAddContactError('');
+                }}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAddContact}
+                disabled={addingContact || !newContactPhone.trim()}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
+                style={{
+                  background: 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)',
+                  boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
+                }}
+              >
+                {addingContact ? 'Agregando...' : 'Iniciar conversación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Nombre */}
+      {editingContact && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-96 max-w-[90vw] overflow-hidden">
+            {/* Header del modal */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-800">Editar nombre</h3>
+                <button
+                  onClick={() => {
+                    setEditingContact(null);
+                    setEditName('');
+                  }}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido del modal */}
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nombre del contacto
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder={editingContact.phone}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#f7c06f] focus:ring-2 focus:ring-[#f7c06f]/20 focus:outline-none transition-all text-sm"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !savingName) {
+                      handleSaveName();
+                    }
+                  }}
+                />
+                <p className="mt-1.5 text-xs text-gray-400">
+                  Deja vacío para mostrar el número: {editingContact.phone}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer del modal */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setEditingContact(null);
+                  setEditName('');
+                }}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveName}
+                disabled={savingName}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
+                style={{
+                  background: 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)',
+                  boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
+                }}
+              >
+                {savingName ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

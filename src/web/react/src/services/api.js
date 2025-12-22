@@ -573,6 +573,21 @@ export async function getMyContacts() {
   }
 }
 
+// Agregar nuevo contacto (iniciar conversación)
+export async function addContact(phone, name = null) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-contacts/add`, {
+    method: 'POST',
+    body: JSON.stringify({ phone, name })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al agregar contacto');
+  }
+
+  return response.json();
+}
+
 // Enviar mensaje desde mi instancia (sin parámetro isGroup, grupos desactivados)
 export async function sendMyMessage(phone, message) {
   const response = await fetchWithCredentials(`${API_BASE}/my-instance/send-message`, {
@@ -583,6 +598,21 @@ export async function sendMyMessage(phone, message) {
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.details || error.error || 'Error enviando mensaje');
+  }
+
+  return response.json();
+}
+
+// Actualizar nombre de un contacto
+export async function updateContactName(phone, name) {
+  const response = await fetchWithCredentials(`${API_BASE}/my-contacts/${phone}/name`, {
+    method: 'PUT',
+    body: JSON.stringify({ name })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al actualizar nombre');
   }
 
   return response.json();

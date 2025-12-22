@@ -75,7 +75,7 @@ class ArchiveService {
     }
 
     /**
-     * Obtener todas las conversaciones archivadas
+     * Obtener todas las conversaciones archivadas (global)
      * @returns {Promise<Array>}
      */
     async getArchivedConversations() {
@@ -90,6 +90,32 @@ class ArchiveService {
             }));
         } catch (error) {
             console.error('Error obteniendo conversaciones archivadas:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Obtener conversaciones archivadas por un usuario específico
+     * @param {number} archivedBy - ID del usuario que archivó
+     * @returns {Promise<Array>}
+     */
+    async getArchivedConversationsByUser(archivedBy) {
+        if (!archivedBy) {
+            return [];
+        }
+
+        try {
+            const archived = await database.query(
+                'SELECT user_id, archived_at, archived_by FROM archived_conversations WHERE archived_by = ? ORDER BY archived_at DESC',
+                [archivedBy]
+            );
+            return archived.map(row => ({
+                userId: row.user_id,
+                archivedAt: row.archived_at,
+                archivedBy: row.archived_by
+            }));
+        } catch (error) {
+            console.error('Error obteniendo conversaciones archivadas por usuario:', error);
             return [];
         }
     }

@@ -232,6 +232,89 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
     // ===== ENDPOINTS DE CONTACTOS FILTRADOS POR USUARIO =====
 
+    // Rate limit: máximo de conversaciones nuevas por usuario por día
+    const DAILY_CONVERSATION_LIMIT = 150;
+
+    // Agregar nuevo contacto (iniciar conversación)
+    app.post('/api/my-contacts/add', requireAuth, async (req, res) => {
+        try {
+            const { phone, name } = req.body;
+            const userId = req.user.id;
+
+            if (!phone) {
+                return res.status(400).json({ error: 'El número de teléfono es requerido' });
+            }
+
+            // Verificar rate limit: contar conversaciones iniciadas hoy por este usuario
+            const todayCount = await database.query(`
+                SELECT COUNT(*) as count FROM client_assignments
+                WHERE support_user_id = ?
+                AND DATE(created_at) = CURDATE()
+            `, [userId]);
+
+            const conversationsToday = todayCount[0]?.count || 0;
+
+            if (conversationsToday >= DAILY_CONVERSATION_LIMIT) {
+                return res.status(429).json({
+                    error: `Límite diario alcanzado. Máximo ${DAILY_CONVERSATION_LIMIT} conversaciones nuevas por día.`,
+                    limit: DAILY_CONVERSATION_LIMIT,
+                    used: conversationsToday
+                });
+            }
+
+            // Limpiar el número (solo dígitos)
+            const cleanPhone = phone.replace(/\D/g, '');
+
+            if (cleanPhone.length < 10) {
+                return res.status(400).json({ error: 'Número de teléfono inválido' });
+            }
+
+            // Verificar si ya existe una asignación para este teléfono
+            const existing = await database.findOne(
+                'client_assignments',
+                'client_phone = ?',
+                [cleanPhone]
+            );
+
+            if (existing) {
+                // Si ya existe pero está asignado a otro usuario
+                if (existing.support_user_id !== userId) {
+                    return res.status(400).json({
+                        error: 'Este contacto ya está asignado a otro usuario'
+                    });
+                }
+                // Si ya está asignado a este usuario, simplemente retornar éxito
+                return res.json({
+                    success: true,
+                    message: 'Contacto ya existe',
+                    phone: cleanPhone
+                });
+            }
+
+            // Crear la asignación
+            await database.insert('client_assignments', {
+                client_phone: cleanPhone,
+                support_user_id: userId,
+                is_group: false,
+                group_name: name || null,
+                last_message_at: new Date()
+            });
+
+            // Establecer modo humano por defecto para nuevos contactos iniciados manualmente
+            const humanModeManager = require('../services/humanModeManager');
+            await humanModeManager.setMode(cleanPhone, 'human');
+
+            res.json({
+                success: true,
+                message: 'Contacto agregado exitosamente',
+                phone: cleanPhone
+            });
+        } catch (error) {
+            console.error('Error agregando contacto:', error);
+            res.status(500).json({ error: 'Error agregando contacto' });
+        }
+    });
+
     // Obtener contactos del usuario actual
     app.get('/api/my-contacts', requireAuth, async (req, res) => {
         try {
@@ -374,6 +457,47 @@ module.exports = function(app, requireAuth, requireAdmin) {
         } catch (error) {
             console.error('Error obteniendo configuración de AI:', error);
             res.status(500).json({ error: 'Error obteniendo configuración' });
+        }
+    });
+
+    // Actualizar nombre de contacto
+    app.put('/api/my-contacts/:phone/name', requireAuth, async (req, res) => {
+        try {
+            const { phone } = req.params;
+            const { name } = req.body;
+            const userId = req.user.id;
+
+            if (!phone) {
+                return res.status(400).json({ error: 'El teléfono es requerido' });
+            }
+
+            // Verificar que el contacto pertenece al usuario
+            const assignment = await database.findOne(
+                'client_assignments',
+                'client_phone = ? AND support_user_id = ?',
+                [phone, userId]
+            );
+
+            if (!assignment) {
+                return res.status(404).json({ error: 'Contacto no encontrado' });
+            }
+
+            // Actualizar el nombre (null si está vacío para mostrar el teléfono)
+            await database.update(
+                'client_assignments',
+                { group_name: name?.trim() || null },
+                'client_phone = ? AND support_user_id = ?',
+                [phone, userId]
+            );
+
+            res.json({
+                success: true,
+                message: 'Nombre actualizado correctamente',
+                name: name?.trim() || null
+            });
+        } catch (error) {
+            console.error('Error actualizando nombre de contacto:', error);
+            res.status(500).json({ error: 'Error actualizando nombre' });
         }
     });
 };

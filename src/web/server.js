@@ -810,10 +810,11 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             }
         });
 
-        // API endpoint para obtener conversaciones archivadas
+        // API endpoint para obtener conversaciones archivadas (filtradas por usuario)
         this.app.get('/api/archived-conversations', requireAuth, async (req, res) => {
             try {
-                const archived = await archiveService.getArchivedConversations();
+                const userId = req.user.id;
+                const archived = await archiveService.getArchivedConversationsByUser(userId);
                 res.json(archived);
             } catch (error) {
                 console.error('Error obteniendo conversaciones archivadas:', error);

@@ -20,6 +20,9 @@ async function startAllInstances() {
     try {
         console.log('🚀 Iniciando instancias de WhatsApp...');
 
+        // Matar procesos zombie de Chrome antes de iniciar
+        await whatsappInstanceManager.killZombieChrome();
+
         // Obtener todos los usuarios activos
         const users = await database.findAll(
             'support_users',
