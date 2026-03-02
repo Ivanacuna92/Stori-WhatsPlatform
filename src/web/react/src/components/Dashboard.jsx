@@ -56,8 +56,8 @@ function Dashboard() {
           className="px-4 py-2 rounded-xl border bg-white text-gray-700 focus:outline-none transition-all text-sm"
           style={{ borderColor: '#E8EBED' }}
           onFocus={(e) => {
-            e.target.style.borderColor = '#f7c06f';
-            e.target.style.boxShadow = '0 0 0 3px rgba(92, 25, 227, 0.08)';
+            e.target.style.borderColor = '#1B7F4A';
+            e.target.style.boxShadow = '0 0 0 3px rgba(27, 127, 74, 0.08)';
           }}
           onBlur={(e) => {
             e.target.style.borderColor = '#E8EBED';
@@ -112,13 +112,13 @@ function Dashboard() {
                 className="w-full transition-all cursor-pointer rounded-t"
                 style={{
                   height: `${(count / Math.max(...Object.values(stats?.messagesByHour || {1: 1}))) * 100}%`,
-                  background: '#f7c06f'
+                  background: '#1B7F4A'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = '#e5a84d';
+                  e.target.style.background = '#156B3D';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = '#f7c06f';
+                  e.target.style.background = '#1B7F4A';
                 }}
               >
                 <span className="text-white text-xs font-medium flex justify-center pt-1">{count}</span>
@@ -156,8 +156,8 @@ function StatCard({ title, value, subtitle }) {
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = '#f7c06f';
-        e.currentTarget.style.boxShadow = '0 4px 12px rgba(92, 25, 227, 0.15)';
+        e.currentTarget.style.borderColor = '#1B7F4A';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(27, 127, 74, 0.15)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = '#E8EBED';
@@ -178,16 +178,16 @@ function InsightCard({ title, value }) {
     <div
       className="rounded-xl text-white p-6 transition-all cursor-pointer"
       style={{
-        background: '#f7c06f',
-        boxShadow: '0 4px 12px rgba(92, 25, 227, 0.2)'
+        background: '#1B7F4A',
+        boxShadow: '0 4px 12px rgba(27, 127, 74, 0.2)'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = '#e5a84d';
-        e.currentTarget.style.boxShadow = '0 6px 16px rgba(92, 25, 227, 0.3)';
+        e.currentTarget.style.background = '#156B3D';
+        e.currentTarget.style.boxShadow = '0 6px 16px rgba(27, 127, 74, 0.3)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = '#f7c06f';
-        e.currentTarget.style.boxShadow = '0 4px 12px rgba(92, 25, 227, 0.2)';
+        e.currentTarget.style.background = '#1B7F4A';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(27, 127, 74, 0.2)';
       }}
     >
       <h4 className="text-xs font-medium mb-2 opacity-80">{title}</h4>

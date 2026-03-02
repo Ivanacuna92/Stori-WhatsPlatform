@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { login } from '../services/api';
 import { ToastContainer } from './Toast';
 import { useToast } from '../hooks/useToast';
-import logoIcon from '../assets/ESAC_LOGO.png';
+import logoIcon from '../assets/legaxxi.png';
 
 function Login({ onLoginSuccess }) {
   const [formData, setFormData] = useState({
@@ -128,7 +128,7 @@ function Login({ onLoginSuccess }) {
           left: 30%;
           width: 400px;
           height: 400px;
-          background: radial-gradient(circle, rgba(92, 25, 227, 0.03) 0%, transparent 50%);
+          background: radial-gradient(circle, rgba(27, 127, 74, 0.03) 0%, transparent 50%);
           filter: blur(80px);
           pointer-events: none;
         }
@@ -140,7 +140,7 @@ function Login({ onLoginSuccess }) {
           right: 20%;
           width: 350px;
           height: 350px;
-          background: radial-gradient(circle, rgba(92, 25, 227, 0.02) 0%, transparent 60%);
+          background: radial-gradient(circle, rgba(27, 127, 74, 0.02) 0%, transparent 60%);
           filter: blur(100px);
           pointer-events: none;
         }
@@ -235,7 +235,7 @@ function Login({ onLoginSuccess }) {
 
           .mobile-input-large:focus {
             background: #ffffff !important;
-            border-color: #f7c06f !important;
+            border-color: #1B7F4A !important;
             box-shadow: 0 0 0 3px rgba(0, 204, 123, 0.08) !important;
             outline: none !important;
           }
@@ -244,7 +244,7 @@ function Login({ onLoginSuccess }) {
             padding: 1.2rem !important;
             font-size: 1.1rem !important;
             font-weight: 500 !important;
-            background: #f7c06f !important;
+            background: #1B7F4A !important;
             border: none !important;
             color: white !important;
             box-shadow: 0 4px 12px rgba(0, 204, 123, 0.2) !important;
@@ -253,7 +253,7 @@ function Login({ onLoginSuccess }) {
           }
 
           .mobile-button-large:hover {
-            background: #e5a84d !important;
+            background: #156B3D !important;
             transform: translateY(-1px) !important;
             box-shadow: 0 6px 16px rgba(0, 204, 123, 0.3) !important;
           }
@@ -291,7 +291,7 @@ function Login({ onLoginSuccess }) {
               <div className="w-full flex items-center justify-center">
                 <img
                   src={logoIcon}
-                  alt="ESAC CRM"
+                  alt="Legaxxi"
                   className="w-48 h-32 md:w-56 md:h-36 mobile-logo-large object-contain"
                 />
               </div>
@@ -318,7 +318,7 @@ function Login({ onLoginSuccess }) {
                     borderColor: '#E8EBED'
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = '#f7c06f';
+                    e.target.style.borderColor = '#1B7F4A';
                     e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
                   }}
                   onBlur={(e) => {
@@ -346,7 +346,7 @@ function Login({ onLoginSuccess }) {
                       borderColor: '#E8EBED'
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = '#f7c06f';
+                      e.target.style.borderColor = '#1B7F4A';
                       e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
                     }}
                     onBlur={(e) => {
@@ -362,10 +362,10 @@ function Login({ onLoginSuccess }) {
                     onClick={togglePassword}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 md:text-gray-400 mobile-text-dark transition-colors"
                     style={{
-                      color: showPassword ? '#f7c06f' : '#9CA3AF'
+                      color: showPassword ? '#1B7F4A' : '#9CA3AF'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#f7c06f';
+                      e.currentTarget.style.color = '#1B7F4A';
                     }}
                     onMouseLeave={(e) => {
                       if (!showPassword) {
@@ -398,16 +398,16 @@ function Login({ onLoginSuccess }) {
                 disabled={loading}
                 className="w-full text-white py-3 md:py-3 mobile-button-large rounded-xl transition-all text-sm md:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: '#f7c06f'
+                  background: '#1B7F4A'
                 }}
                 onMouseEnter={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#e5a84d';
+                    e.target.style.background = '#156B3D';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#f7c06f';
+                    e.target.style.background = '#1B7F4A';
                   }
                 }}
               >
@@ -435,16 +435,6 @@ function Login({ onLoginSuccess }) {
             </form>
 
           </div>
-        </div>
-
-        {/* Credenciales de ejemplo */}
-        <div className="w-full max-w-sm mx-auto text-center mt-6 text-xs text-gray-500">
-          <p>
-            <span className="font-medium text-gray-600">Admin:</span> admin@esac.com
-          </p>
-          <p>
-            <span className="font-medium text-gray-600">Contraseña:</span> Esac*2025
-          </p>
         </div>
 
         <ToastContainer toasts={toasts} removeToast={removeToast} />

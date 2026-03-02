@@ -144,7 +144,7 @@ class WhatsAppInstanceManager {
                 client: null,
                 supportUserId,
                 instanceName,
-                status: 'disconnected',
+                status: 'initializing', // Estado inicial mientras carga Chrome
                 qr: null,
                 phone: null,
                 reconnectAttempts: 0,
@@ -153,10 +153,12 @@ class WhatsAppInstanceManager {
                 hasBeenConnected: false,
                 firstQrGenerated: false,
                 qrRegenerationAttempts: 0,
-                maxQrRegenerations: 10
+                maxQrRegenerations: 10,
+                startedAt: Date.now()
             };
 
             this.instances.set(supportUserId, instanceData);
+            console.log(`⏳ Instancia ${supportUserId} en estado 'initializing' - Cargando Chrome...`);
 
             // Crear cliente WPPConnect con session única por usuario
             const sessionPath = path.join(process.cwd(), 'tokens', `user_${supportUserId}`);
@@ -167,7 +169,7 @@ class WhatsAppInstanceManager {
                 useChrome: true,
                 debug: false,
                 logQR: false,
-                autoClose: 15000, // Cerrar automáticamente después de 15 segundos si no hay conexión
+                autoClose: 120000, // Cerrar automáticamente después de 2 minutos si no hay conexión
                 browserArgs: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -183,13 +185,19 @@ class WhatsAppInstanceManager {
                 },
                 // Capturar QR
                 catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
+                    console.log(`📱 QR generado para usuario ${supportUserId} (intento ${attempts}) - Disponible en panel web`);
+
                     if (!instanceData.firstQrGenerated) {
-                        console.log(`📱 QR generado para usuario ${supportUserId} - Disponible en panel web`);
                         instanceData.firstQrGenerated = true;
                     }
 
+                    // Actualizar estado inmediatamente
                     instanceData.qr = base64Qr;
                     instanceData.status = 'qr_ready';
+                    instanceData.qrGeneratedAt = Date.now();
+                    instanceData.qrAttempts = attempts;
+
+                    console.log(`✅ QR actualizado en memoria para usuario ${supportUserId} - Status: ${instanceData.status}`);
 
                     // Actualizar en BD
                     this.updateInstanceInDB(supportUserId, {
@@ -223,13 +231,33 @@ class WhatsAppInstanceManager {
                         }).catch(err => console.error('Error actualizando BD:', err));
 
                         logger.log('SYSTEM', `Bot iniciado para usuario ${supportUserId}`, supportUserId, instanceName);
-                    } else if (statusSession === 'autocloseCalled' || statusSession === 'desconnectedMobile') {
-                        instanceData.status = 'disconnected';
-                        console.log(`❌ WhatsApp desconectado para usuario ${supportUserId}`);
+                    } else if (statusSession === 'autocloseCalled') {
+                        // Se cerró automáticamente (timeout) - reintentar si no ha conectado
+                        if (!instanceData.hasBeenConnected) {
+                            console.log(`⏰ Timeout para usuario ${supportUserId} - Reintentando...`);
+                            instanceData.status = 'disconnected';
+                            instanceData.reconnectAttempts++;
+
+                            if (instanceData.reconnectAttempts < instanceData.maxReconnectAttempts) {
+                                this.scheduleReconnect(supportUserId, instanceName, instanceData.reconnectAttempts);
+                            } else {
+                                console.log(`❌ Máximo de reintentos alcanzado para usuario ${supportUserId}`);
+                            }
+                        }
 
                         this.updateInstanceInDB(supportUserId, {
                             status: 'disconnected'
                         }).catch(err => console.error('Error actualizando BD:', err));
+                    } else if (statusSession === 'desconnectedMobile') {
+                        instanceData.status = 'disconnected';
+                        console.log(`📱 WhatsApp desconectado desde el móvil para usuario ${supportUserId}`);
+
+                        this.updateInstanceInDB(supportUserId, {
+                            status: 'disconnected'
+                        }).catch(err => console.error('Error actualizando BD:', err));
+
+                        // Reintentar conexión
+                        this.scheduleReconnect(supportUserId, instanceName, 1);
                     }
                 }
             });

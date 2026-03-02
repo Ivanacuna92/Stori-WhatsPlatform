@@ -127,22 +127,40 @@ module.exports = function(app, requireAuth, requireAdmin) {
             const instance = instanceManager.getInstance(req.user.id);
 
             if (!instance) {
+                // Si no hay instancia, intentar iniciarla
+                console.log(`⚠️ No hay instancia para usuario ${req.user.id}, iniciando...`);
+                instanceManager.startInstance(req.user.id, req.user.name).catch(err => {
+                    console.error('Error iniciando instancia:', err);
+                });
+
                 return res.json({
                     qr: null,
-                    status: 'not_found',
-                    message: 'No hay instancia iniciada para este usuario'
+                    status: 'initializing',
+                    message: 'Iniciando WhatsApp, espera un momento...'
                 });
+            }
+
+            // Determinar mensaje según estado
+            let message = '';
+            switch (instance.status) {
+                case 'connected':
+                    message = 'WhatsApp conectado';
+                    break;
+                case 'qr_ready':
+                    message = 'Escanea el código QR';
+                    break;
+                case 'initializing':
+                    message = 'Iniciando WhatsApp, espera un momento...';
+                    break;
+                default:
+                    message = 'Esperando código QR...';
             }
 
             res.json({
                 qr: instance.qr,
                 status: instance.status,
                 phone: instance.phone,
-                message: instance.status === 'connected'
-                    ? 'WhatsApp conectado'
-                    : instance.qr
-                        ? 'Escanea el código QR'
-                        : 'Esperando código QR...'
+                message: message
             });
         } catch (error) {
             console.error('Error obteniendo QR:', error);

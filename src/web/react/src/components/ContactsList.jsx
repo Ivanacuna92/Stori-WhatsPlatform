@@ -271,8 +271,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                 onClick={() => setShowNewContactModal(true)}
                 className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
                 style={{
-                  background: 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)',
-                  boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
+                  background: 'linear-gradient(135deg, #1B7F4A 0%, #156B3D 100%)',
+                  boxShadow: '0 2px 4px rgba(27, 127, 74, 0.3)'
                 }}
                 title="Nueva conversación"
               >
@@ -286,9 +286,9 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             onClick={() => setShowArchived(!showArchived)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
             style={{
-              background: showArchived ? 'rgba(247, 192, 111, 0.1)' : '#F3F4F6',
-              color: showArchived ? '#f7c06f' : '#6B7280',
-              border: showArchived ? '1px solid rgba(247, 192, 111, 0.3)' : '1px solid transparent'
+              background: showArchived ? 'rgba(27, 127, 74, 0.1)' : '#F3F4F6',
+              color: showArchived ? '#1B7F4A' : '#6B7280',
+              border: showArchived ? '1px solid rgba(27, 127, 74, 0.3)' : '1px solid transparent'
             }}
             onMouseEnter={(e) => {
               if (!showArchived) {
@@ -324,8 +324,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
             }}
             onFocus={(e) => {
               e.target.style.background = '#ffffff';
-              e.target.style.border = '1px solid #f7c06f';
-              e.target.style.boxShadow = '0 0 0 3px rgba(247, 192, 111, 0.08)';
+              e.target.style.border = '1px solid #1B7F4A';
+              e.target.style.boxShadow = '0 0 0 3px rgba(27, 127, 74, 0.08)';
             }}
             onBlur={(e) => {
               e.target.style.background = '#F3F4F6';
@@ -347,13 +347,13 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
               className="mb-1 rounded-xl cursor-pointer transition-all duration-200"
               style={{
                 background: selectedContact?.phone === contact.phone
-                  ? 'rgba(247, 192, 111, 0.08)'
+                  ? 'rgba(27, 127, 74, 0.08)'
                   : 'transparent',
                 boxShadow: selectedContact?.phone === contact.phone
-                  ? '0 2px 8px rgba(247, 192, 111, 0.15)'
+                  ? '0 2px 8px rgba(27, 127, 74, 0.15)'
                   : 'none',
                 border: selectedContact?.phone === contact.phone
-                  ? '1px solid rgba(247, 192, 111, 0.2)'
+                  ? '1px solid rgba(27, 127, 74, 0.2)'
                   : '1px solid transparent'
               }}
               onMouseEnter={(e) => {
@@ -409,7 +409,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                           ? '#F97316'
                           : contact.isHumanMode
                             ? '#3B82F6'
-                            : '#f7c06f',
+                            : '#1B7F4A',
                         borderColor: selectedContact?.phone === contact.phone ? '#ffffff' : '#FAFBFC'
                       }}
                     ></div>
@@ -445,8 +445,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                         <>
                           {getUnreadCount(contact) > 0 && (
                             <span className="min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{
-                              background: '#f7c06f',
-                              boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
+                              background: '#1B7F4A',
+                              boxShadow: '0 2px 4px rgba(27, 127, 74, 0.3)'
                             }}>
                               {getUnreadCount(contact) > 99 ? '99+' : getUnreadCount(contact)}
                             </span>
@@ -508,7 +508,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                   value={newContactPhone}
                   onChange={(e) => setNewContactPhone(e.target.value)}
                   placeholder="5217712345678"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#f7c06f] focus:ring-2 focus:ring-[#f7c06f]/20 focus:outline-none transition-all text-sm"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#1B7F4A] focus:ring-2 focus:ring-[#1B7F4A]/20 focus:outline-none transition-all text-sm"
                   autoFocus
                 />
                 <p className="mt-1.5 text-xs text-gray-400">
@@ -525,7 +525,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                   value={newContactName}
                   onChange={(e) => setNewContactName(e.target.value)}
                   placeholder="Nombre del contacto"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#f7c06f] focus:ring-2 focus:ring-[#f7c06f]/20 focus:outline-none transition-all text-sm"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#1B7F4A] focus:ring-2 focus:ring-[#1B7F4A]/20 focus:outline-none transition-all text-sm"
                 />
               </div>
 
@@ -554,8 +554,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                 disabled={addingContact || !newContactPhone.trim()}
                 className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
                 style={{
-                  background: 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)',
-                  boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
+                  background: 'linear-gradient(135deg, #1B7F4A 0%, #156B3D 100%)',
+                  boxShadow: '0 2px 4px rgba(27, 127, 74, 0.3)'
                 }}
               >
                 {addingContact ? 'Agregando...' : 'Iniciar conversación'}
@@ -598,7 +598,7 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder={editingContact.phone}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#f7c06f] focus:ring-2 focus:ring-[#f7c06f]/20 focus:outline-none transition-all text-sm"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#1B7F4A] focus:ring-2 focus:ring-[#1B7F4A]/20 focus:outline-none transition-all text-sm"
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !savingName) {
@@ -628,8 +628,8 @@ function ContactsList({ contacts, setContacts, selectedContact, onSelectContact 
                 disabled={savingName}
                 className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
                 style={{
-                  background: 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)',
-                  boxShadow: '0 2px 4px rgba(247, 192, 111, 0.3)'
+                  background: 'linear-gradient(135deg, #1B7F4A 0%, #156B3D 100%)',
+                  boxShadow: '0 2px 4px rgba(27, 127, 74, 0.3)'
                 }}
               >
                 {savingName ? 'Guardando...' : 'Guardar'}

@@ -152,7 +152,7 @@ function UserAdmin() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen" style={{ background: '#FAFBFC' }}>
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-purple-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-green-500"></div>
       </div>
     );
   }
@@ -171,9 +171,9 @@ function UserAdmin() {
             setShowCreateModal(true);
           }}
           className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all"
-          style={{ background: '#f7c06f' }}
-          onMouseEnter={(e) => e.target.style.background = '#e5a84d'}
-          onMouseLeave={(e) => e.target.style.background = '#f7c06f'}
+          style={{ background: '#1B7F4A' }}
+          onMouseEnter={(e) => e.target.style.background = '#156B3D'}
+          onMouseLeave={(e) => e.target.style.background = '#1B7F4A'}
         >
           + Crear Usuario
         </button>
@@ -201,7 +201,7 @@ function UserAdmin() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{
-                      background: user.active ? 'linear-gradient(135deg, #f7c06f 0%, #e5a84d 100%)' : '#9CA3AF'
+                      background: user.active ? 'linear-gradient(135deg, #1B7F4A 0%, #156B3D 100%)' : '#9CA3AF'
                     }}>
                       {user.name?.charAt(0).toUpperCase()}
                     </div>
@@ -212,7 +212,7 @@ function UserAdmin() {
                 <td className="px-6 py-4">
                   <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
                     user.role === 'admin'
-                      ? 'bg-purple-100 text-purple-700'
+                      ? 'bg-green-100 text-green-700'
                       : 'bg-blue-100 text-blue-700'
                   }`}>
                     {user.role === 'admin' ? 'Admin' : 'Soporte'}
@@ -285,7 +285,7 @@ function UserAdmin() {
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-green-500"
                     style={{ borderColor: '#E8EBED' }}
                   />
                 </div>
@@ -296,7 +296,7 @@ function UserAdmin() {
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-green-500"
                     style={{ borderColor: '#E8EBED' }}
                   />
                 </div>
@@ -307,7 +307,7 @@ function UserAdmin() {
                     required
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-green-500"
                     style={{ borderColor: '#E8EBED' }}
                   />
                 </div>
@@ -316,7 +316,7 @@ function UserAdmin() {
                   <select
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-green-500"
                     style={{ borderColor: '#E8EBED' }}
                   >
                     <option value="support">Soporte</option>
@@ -342,9 +342,9 @@ function UserAdmin() {
                 <button
                   type="submit"
                   className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
-                  style={{ background: '#f7c06f' }}
-                  onMouseEnter={(e) => e.target.style.background = '#e5a84d'}
-                  onMouseLeave={(e) => e.target.style.background = '#f7c06f'}
+                  style={{ background: '#1B7F4A' }}
+                  onMouseEnter={(e) => e.target.style.background = '#156B3D'}
+                  onMouseLeave={(e) => e.target.style.background = '#1B7F4A'}
                 >
                   Crear Usuario
                 </button>
@@ -370,7 +370,7 @@ function UserAdmin() {
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-green-500"
                     style={{ borderColor: '#E8EBED' }}
                   />
                 </div>
@@ -379,7 +379,7 @@ function UserAdmin() {
                   <select
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-green-500"
                     style={{ borderColor: '#E8EBED' }}
                     disabled={selectedUser.email === 'admin@whatspanel.com'}
                   >
@@ -413,9 +413,9 @@ function UserAdmin() {
                 <button
                   type="submit"
                   className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all"
-                  style={{ background: '#f7c06f' }}
-                  onMouseEnter={(e) => e.target.style.background = '#e5a84d'}
-                  onMouseLeave={(e) => e.target.style.background = '#f7c06f'}
+                  style={{ background: '#1B7F4A' }}
+                  onMouseEnter={(e) => e.target.style.background = '#156B3D'}
+                  onMouseLeave={(e) => e.target.style.background = '#1B7F4A'}
                 >
                   Guardar Cambios
                 </button>
