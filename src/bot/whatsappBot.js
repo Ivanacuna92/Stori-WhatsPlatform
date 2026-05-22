@@ -1,11 +1,6 @@
 const wppconnect = require('@wppconnect-team/wppconnect');
 const config = require('../config/config');
 const logger = require('../services/logger');
-const aiService = require('../services/aiService');
-const sessionManager = require('../services/sessionManager');
-const promptLoader = require('../services/promptLoader');
-const humanModeManager = require('../services/humanModeManager');
-const followUpService = require('../services/followUpService');
 const mediaService = require('../services/mediaService');
 
 class WhatsAppBot {
@@ -17,7 +12,6 @@ class WhatsAppBot {
 
     async start() {
         console.log('Iniciando bot de WhatsApp con WPPConnect...');
-        config.validateApiKey();
 
         try {
             // Crear cliente WPPConnect
@@ -56,8 +50,6 @@ class WhatsAppBot {
                         this.currentQR = null;
                         this.isReady = true;
                         logger.log('SYSTEM', 'Bot iniciado correctamente con WPPConnect');
-                        sessionManager.startCleanupTimer(this.client);
-                        followUpService.startFollowUpTimer(this.client);
                     } else if (statusSession === 'autocloseCalled' || statusSession === 'desconnectedMobile') {
                         console.log('Cliente desconectado');
                         this.isReady = false;
@@ -183,14 +175,8 @@ class WhatsAppBot {
                     // Registrar el mensaje (con o sin archivo multimedia)
                     await logger.log('cliente', conversation, userId, userName, false, null, null, null, mediaInfo);
 
-                    // YA NO HAY IA - Solo registrar el mensaje entrante
-                    const mediaText = mediaInfo ? ` con ${mediaInfo.mediaType}` : '';
-                    await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId})${mediaText} - Esperando respuesta humana`);
-
-                    // Cancelar seguimiento si existe
-                    if (followUpService.hasActiveFollowUp(userId)) {
-                        await followUpService.cancelFollowUp(userId, 'Cliente respondió');
-                    }
+                    // Solo registrar el mensaje entrante
+                    console.log(`📨 Mensaje recibido de ${userName} (${userId})`);
 
                 } catch (error) {
                     await this.handleError(error, message);
@@ -232,36 +218,6 @@ class WhatsAppBot {
             logger.log('ERROR', 'Error iniciando bot: ' + error.message);
             throw error;
         }
-    }
-
-    async processMessage(userId, userMessage, chatId) {
-        // Agregar mensaje del usuario a la sesión
-        await sessionManager.addMessage(userId, 'user', userMessage, chatId);
-
-        // Solo chats individuales (grupos están desactivados)
-        const systemPrompt = promptLoader.getPrompt(false);
-
-        // Preparar mensajes para la IA
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            ...(await sessionManager.getMessages(userId, chatId))
-        ];
-
-        // Generar respuesta con IA
-        const aiResponse = await aiService.generateResponse(messages);
-
-        // Verificar si la respuesta contiene el marcador de activar soporte
-        if (aiResponse.includes('{{ACTIVAR_SOPORTE}}')) {
-            const cleanResponse = aiResponse.replace('{{ACTIVAR_SOPORTE}}', '').trim();
-            await humanModeManager.setMode(userId, 'support');
-            await sessionManager.updateSessionMode(userId, chatId, 'support');
-            await sessionManager.addMessage(userId, 'assistant', cleanResponse, chatId);
-            await logger.log('SYSTEM', `Modo SOPORTE activado automáticamente para ${userId}`);
-            return cleanResponse;
-        }
-
-        await sessionManager.addMessage(userId, 'assistant', aiResponse, chatId);
-        return aiResponse;
     }
 
     async handleError(error, message) {

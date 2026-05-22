@@ -248,6 +248,57 @@ module.exports = function(app, requireAuth, requireAdmin) {
         }
     });
 
+    // Obtener estadísticas del instance manager (solo admin)
+    app.get('/api/instances/stats', requireAdmin, (req, res) => {
+        try {
+            const instanceManager = global.whatsappInstanceManager;
+            const stats = instanceManager.getStats();
+            res.json({ success: true, stats });
+        } catch (error) {
+            console.error('Error obteniendo stats:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Forzar reinicio de instancia (solo admin)
+    app.post('/api/instances/:userId/force-restart', requireAdmin, async (req, res) => {
+        try {
+            const { userId } = req.params;
+            const instanceManager = global.whatsappInstanceManager;
+
+            console.log(`🔄 Admin solicitó force-restart para usuario ${userId}`);
+            const result = await instanceManager.forceRestartInstance(parseInt(userId));
+
+            res.json({
+                success: true,
+                message: `Instancia reiniciada para usuario ${userId}`,
+                status: result?.status || 'restarting'
+            });
+        } catch (error) {
+            console.error('Error en force-restart:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Forzar reinicio de mi propia instancia
+    app.post('/api/my-instance/force-restart', requireAuth, async (req, res) => {
+        try {
+            const instanceManager = global.whatsappInstanceManager;
+
+            console.log(`🔄 Usuario ${req.user.id} solicitó force-restart de su instancia`);
+            const result = await instanceManager.forceRestartInstance(req.user.id);
+
+            res.json({
+                success: true,
+                message: 'Instancia reiniciada. Nuevo QR disponible en unos segundos.',
+                status: result?.status || 'restarting'
+            });
+        } catch (error) {
+            console.error('Error en force-restart:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     // ===== ENDPOINTS DE CONTACTOS FILTRADOS POR USUARIO =====
 
     // Rate limit: máximo de conversaciones nuevas por usuario por día
@@ -318,10 +369,6 @@ module.exports = function(app, requireAuth, requireAdmin) {
                 last_message_at: new Date()
             });
 
-            // Establecer modo humano por defecto para nuevos contactos iniciados manualmente
-            const humanModeManager = require('../services/humanModeManager');
-            await humanModeManager.setMode(cleanPhone, 'human');
-
             res.json({
                 success: true,
                 message: 'Contacto agregado exitosamente',
@@ -348,7 +395,6 @@ module.exports = function(app, requireAuth, requireAdmin) {
 
             // Obtener logs para cada cliente asignado
             const logger = require('../services/logger');
-            const humanModeManager = require('../services/humanModeManager');
 
             const contacts = await Promise.all(
                 assignments.map(async (assignment) => {
@@ -365,23 +411,16 @@ module.exports = function(app, requireAuth, requireAdmin) {
                         userName: log.userName
                     }));
 
-                    // Obtener modo actual (solo humano o soporte, sin IA) - DEBE SER AWAIT
-                    const rawMode = await humanModeManager.getMode(assignment.client_phone);
-                    const mode = rawMode === 'support' ? 'support' : 'human'; // Solo 2 modos posibles
-                    const isHumanMode = mode === 'human';
-
                     return {
                         phone: assignment.client_phone,
                         name: assignment.group_name || assignment.client_phone,
-                        isGroup: false, // Grupos desactivados
+                        isGroup: false,
                         groupName: assignment.group_name,
                         messages: messages.reverse(), // Orden cronológico
                         totalMessages: messages.length,
                         userMessages: messages.filter(m => m.type === 'USER' || m.role === 'cliente').length,
                         botMessages: messages.filter(m => m.type === 'BOT' || m.role === 'bot').length,
                         lastActivity: assignment.last_message_at,
-                        isHumanMode,
-                        mode, // Siempre 'human' o 'support'
                         lastMessage: messages.length > 0 ? {
                             text: messages[messages.length - 1].message,
                             timestamp: messages[messages.length - 1].timestamp
@@ -461,22 +500,6 @@ module.exports = function(app, requireAuth, requireAdmin) {
         }
     });
 
-    // Obtener configuración de AI
-    app.get('/api/ai-config', requireAuth, async (req, res) => {
-        try {
-            const systemConfigService = require('../services/systemConfigService');
-            const groupsAIEnabled = await systemConfigService.isGroupsAIEnabled();
-            const individualAIEnabled = await systemConfigService.isIndividualAIEnabled();
-
-            res.json({
-                groupsAIEnabled,
-                individualAIEnabled
-            });
-        } catch (error) {
-            console.error('Error obteniendo configuración de AI:', error);
-            res.status(500).json({ error: 'Error obteniendo configuración' });
-        }
-    });
 
     // Actualizar nombre de contacto
     app.put('/api/my-contacts/:phone/name', requireAuth, async (req, res) => {

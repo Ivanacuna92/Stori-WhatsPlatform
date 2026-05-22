@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMyMessage, toggleHumanMode, deleteConversation, leaveGroup, archiveConversation, unarchiveConversation } from '../services/api';
+import { sendMyMessage, deleteConversation, archiveConversation, unarchiveConversation } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MediaMessage from './MediaMessage';
@@ -305,33 +305,6 @@ function ChatPanel({ contact, onUpdateContact }) {
 
         {/* Botones de acción */}
         <div className="flex items-center gap-2">
-          {isSupport && (
-            <button
-              className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
-              style={{
-                background: 'rgba(249, 115, 22, 0.1)',
-                color: '#F97316',
-                border: '1px solid transparent'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = '#F97316';
-                e.target.style.color = 'white';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = 'rgba(249, 115, 22, 0.1)';
-                e.target.style.color = '#F97316';
-              }}
-              onClick={async () => {
-                // Cambiar de soporte a humano
-                await toggleHumanMode(contact.phone, true, 'human');
-                onUpdateContact({ ...contact, isHumanMode: true, mode: 'human' });
-              }}
-              title="Finalizar modo soporte"
-            >
-              Finalizar Soporte
-            </button>
-          )}
-
           {/* Botón de menú de opciones (3 puntos) */}
           <div className="relative" ref={optionsMenuRef}>
             <button
@@ -339,7 +312,7 @@ function ChatPanel({ contact, onUpdateContact }) {
               className="w-10 h-10 rounded-xl flex items-center justify-center transition-all"
               style={{
                 background: showOptionsMenu ? 'rgba(27, 127, 74, 0.1)' : 'transparent',
-                color: showOptionsMenu ? '#1B7F4A' : '#6B7280'
+                color: showOptionsMenu ? '#FD6144' : '#6B7280'
               }}
               onMouseEnter={(e) => {
                 if (!showOptionsMenu) {
@@ -488,7 +461,7 @@ function ChatPanel({ contact, onUpdateContact }) {
                 border: '1px solid #E8EBED'
               } : {
                 borderRadius: '12px 12px 2px 12px',
-                backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#1B7F4A',
+                backgroundColor: isMessageFromSupport ? '#F97316' : isMessageFromHuman ? '#3B82F6' : '#FD6144',
                 boxShadow: isMessageFromSupport ? '0 2px 8px rgba(249, 115, 22, 0.2)' : isMessageFromHuman ? '0 2px 8px rgba(59, 130, 246, 0.2)' : '0 2px 8px rgba(27, 127, 74, 0.2)'
               }}>
                 <div className={`text-[10px] font-semibold mb-1 ${isClient ? 'text-gray-500' : 'text-white/80'}`}>
@@ -665,7 +638,7 @@ function ChatPanel({ contact, onUpdateContact }) {
               onMouseEnter={(e) => {
                 if (!sending) {
                   e.target.style.background = '#E8EBED';
-                  e.target.style.color = '#1B7F4A';
+                  e.target.style.color = '#FD6144';
                 }
               }}
               onMouseLeave={(e) => {
@@ -695,7 +668,7 @@ function ChatPanel({ contact, onUpdateContact }) {
               onFocus={(e) => {
                 if (!e.target.disabled) {
                   e.target.style.background = '#ffffff';
-                  e.target.style.border = '1px solid #1B7F4A';
+                  e.target.style.border = '1px solid #FD6144';
                   e.target.style.boxShadow = '0 0 0 3px rgba(27, 127, 74, 0.08)';
                 }
               }}
@@ -710,16 +683,16 @@ function ChatPanel({ contact, onUpdateContact }) {
               disabled={sending || (!message.trim() && !selectedFile)}
               className="px-6 py-3 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                background: '#1B7F4A'
+                background: '#FD6144'
               }}
               onMouseEnter={(e) => {
                 if (!e.target.disabled) {
-                  e.target.style.background = '#156B3D';
+                  e.target.style.background = '#FD3244';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!e.target.disabled) {
-                  e.target.style.background = '#1B7F4A';
+                  e.target.style.background = '#FD6144';
                 }
               }}
             >

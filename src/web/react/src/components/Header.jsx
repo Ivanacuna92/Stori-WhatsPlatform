@@ -1,5 +1,5 @@
 import React from 'react';
-import icono from '../assets/legaxxi.png';
+import icono from '../assets/logo-stori.png';
 
 function Header({ currentView, onViewChange, user, onLogout }) {
   return (
@@ -10,7 +10,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
       <div className="flex justify-between items-center relative">
         {/* Logo */}
         <div className="flex items-center">
-          <img src={icono} alt="Legaxxi" className="h-10" />
+          <img src={icono} alt="Diestra" className="h-10" />
         </div>
 
         {/* Navegación - Centrada absolutamente */}
@@ -19,7 +19,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
             <button
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
               style={{
-                background: currentView === 'dashboard' ? '#1B7F4A' : 'transparent',
+                background: currentView === 'dashboard' ? '#FD6144' : 'transparent',
                 color: currentView === 'dashboard' ? 'white' : '#6B7280'
               }}
               onMouseEnter={(e) => {
@@ -42,29 +42,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
           <button
             className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
             style={{
-              background: currentView === 'reports' ? '#1B7F4A' : 'transparent',
-              color: currentView === 'reports' ? 'white' : '#6B7280'
-            }}
-            onMouseEnter={(e) => {
-              if (currentView !== 'reports') {
-                e.target.style.background = '#F3F4F6';
-                e.target.style.color = '#374151';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (currentView !== 'reports') {
-                e.target.style.background = 'transparent';
-                e.target.style.color = '#6B7280';
-              }
-            }}
-            onClick={() => onViewChange('reports')}
-          >
-            Reportes
-          </button>
-          <button
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
-            style={{
-              background: currentView === 'contacts' ? '#1B7F4A' : 'transparent',
+              background: currentView === 'contacts' ? '#FD6144' : 'transparent',
               color: currentView === 'contacts' ? 'white' : '#6B7280'
             }}
             onMouseEnter={(e) => {
@@ -87,7 +65,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
             <button
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
               style={{
-                background: currentView === 'users' ? '#1B7F4A' : 'transparent',
+                background: currentView === 'users' ? '#FD6144' : 'transparent',
                 color: currentView === 'users' ? 'white' : '#6B7280'
               }}
               onMouseEnter={(e) => {
@@ -110,7 +88,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
           <button
             className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
             style={{
-              background: currentView === 'session' ? '#1B7F4A' : 'transparent',
+              background: currentView === 'session' ? '#FD6144' : 'transparent',
               color: currentView === 'session' ? 'white' : '#6B7280'
             }}
             onMouseEnter={(e) => {
@@ -138,7 +116,7 @@ function Header({ currentView, onViewChange, user, onLogout }) {
               background: '#F3F4F6'
             }}>
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold" style={{
-                background: 'linear-gradient(135deg, #1B7F4A 0%, #156B3D 100%)'
+                background: 'linear-gradient(135deg, #FD6144 0%, #FD3244 100%)'
               }}>
                 {user.name?.charAt(0).toUpperCase() || 'U'}
               </div>

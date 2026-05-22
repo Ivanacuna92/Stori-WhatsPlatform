@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import ContactsList from './components/ContactsList';
 import ChatPanel from './components/ChatPanel';
 import Dashboard from './components/Dashboard';
-import Reports from './components/Reports';
 import QRDisplay from './components/QRDisplay';
 import UserAdmin from './components/UserAdmin';
 import MySession from './components/MySession';
@@ -67,7 +66,7 @@ function App() {
     localStorage.setItem('currentView', currentView);
   }, [currentView]);
 
-  // Escuchar eventos para mostrar chat desde reportes
+  // Escuchar eventos para mostrar chat
   React.useEffect(() => {
     const handleShowChat = (event) => {
       const contact = event.detail;
@@ -81,9 +80,7 @@ function App() {
         userMessages: contact.userMessages || 0,
         botMessages: contact.botMessages || 0,
         firstContact: contact.firstContact || new Date().toISOString(),
-        lastActivity: contact.lastActivity || new Date().toISOString(),
-        isHumanMode: contact.isHumanMode || false,
-        mode: contact.mode || 'ai'
+        lastActivity: contact.lastActivity || new Date().toISOString()
       };
 
       setSelectedContact(formattedContact);
@@ -144,8 +141,6 @@ function App() {
       />
       {currentView === 'dashboard' && user?.role === 'admin' ? (
         <Dashboard />
-      ) : currentView === 'reports' ? (
-        <Reports />
       ) : currentView === 'users' && user?.role === 'admin' ? (
         <UserAdmin />
       ) : currentView === 'session' ? (

@@ -101,6 +101,9 @@ async function startAllInstances() {
 
         console.log(`✅ Inicialización completada: ${successCount} exitosas, ${failCount} fallidas`);
         console.log(`ℹ️  ${users.length - usersWithSession.length} usuarios sin sesión fueron omitidos`);
+
+        // Iniciar heartbeat para monitorear instancias
+        whatsappInstanceManager.startHeartbeat();
     } catch (error) {
         console.error('❌ Error iniciando instancias:', error);
     }
@@ -143,11 +146,18 @@ async function start() {
         // Inicializar base de datos
         await databaseInit.createTables();
 
-        // Iniciar todas las instancias de WhatsApp
-        await startAllInstances();
-
         // Iniciar servidor web
-        webServer.start();
+        await webServer.start();
+
+        // Limpiar procesos zombie de Chrome al arrancar
+        await whatsappInstanceManager.killZombieChrome();
+
+        // Iniciar heartbeat para monitorear instancias (cuando se creen bajo demanda)
+        whatsappInstanceManager.startHeartbeat();
+
+        console.log('✅ Servidor listo - Instancias WhatsApp se inician bajo demanda al hacer login');
+
+        // NO iniciar instancias automáticamente - se inician cuando el usuario hace login
     } catch (error) {
         console.error('❌ Error iniciando aplicación:', error);
         process.exit(1);
@@ -159,6 +169,9 @@ start().catch(console.error);
 // Manejar cierre limpio
 process.on('SIGINT', async () => {
     console.log('\n⏹️  Cerrando aplicación...');
+
+    // Detener heartbeat
+    whatsappInstanceManager.stopHeartbeat();
 
     // Detener todas las instancias
     const instances = whatsappInstanceManager.getInstances();

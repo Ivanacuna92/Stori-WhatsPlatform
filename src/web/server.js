@@ -4,13 +4,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const logger = require('../services/logger');
-const humanModeManager = require('../services/humanModeManager');
-const salesManager = require('../services/salesManager');
-const conversationAnalyzer = require('../services/conversationAnalyzer');
 const authService = require('../services/authService');
-const csvService = require('../services/csvService');
-const systemConfigService = require('../services/systemConfigService');
-const promptLoader = require('../services/promptLoader');
 const mediaService = require('../services/mediaService');
 const archiveService = require('../services/archiveService');
 const { requireAuth, requireAdmin, requireSupportOrAdmin } = require('../middleware/auth');
@@ -39,6 +33,39 @@ class WebServer {
     }
 
     setupRoutes() {
+        // ===== NO FAVICON =====
+        this.app.get('/favicon.ico', (req, res) => res.status(204).end());
+
+        // ===== HEALTH CHECK PARA PM2 Y MONITOREO =====
+        this.app.get('/health', (req, res) => {
+            const instanceManager = global.whatsappInstanceManager;
+            const instances = instanceManager ? instanceManager.getInstances() : [];
+            const connectedInstances = instances.filter(i => i.status === 'connected').length;
+
+            const healthData = {
+                status: 'ok',
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime(),
+                memory: {
+                    used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+                    total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+                    unit: 'MB'
+                },
+                whatsapp: {
+                    totalInstances: instances.length,
+                    connected: connectedInstances,
+                    instances: instances.map(i => ({ userId: i.userId, status: i.status }))
+                }
+            };
+
+            // Notificar a PM2 que estamos listos
+            if (process.send) {
+                process.send('ready');
+            }
+
+            res.json(healthData);
+        });
+
         // ===== RUTAS PÚBLICAS DE AUTENTICACIÓN =====
         
         // Endpoint para obtener código QR de WhatsApp
@@ -293,304 +320,15 @@ class WebServer {
             }
         });
 
-        // API endpoints para gestión de modo humano
-        this.app.get('/api/human-states', async (req, res) => {
-            try {
-                const humanStates = await humanModeManager.getAllHumanStates();
-                res.json(humanStates);
-            } catch (error) {
-                console.error('Error obteniendo estados humanos:', error);
-                res.status(500).json({ error: 'Error obteniendo estados humanos' });
-            }
-        });
 
-        this.app.post('/api/human-states', (req, res) => {
-            try {
-                const { phone, isHumanMode, mode } = req.body;
-                
-                if (!phone) {
-                    return res.status(400).json({ error: 'Phone number is required' });
-                }
-                
-                // Si se proporciona un modo específico (support, human, ai)
-                if (mode) {
-                    humanModeManager.setMode(phone, mode === 'ai' ? false : mode);
-                    const modeText = mode === 'support' ? 'SOPORTE' : mode === 'human' ? 'HUMANO' : 'IA';
-                    logger.log('SYSTEM', `Modo ${modeText} establecido para ${phone}`);
-                    
-                    res.json({ 
-                        success: true, 
-                        phone, 
-                        mode,
-                        isHumanMode: mode === 'human',
-                        message: `Modo ${modeText} activado para ${phone}`
-                    });
-                } else {
-                    // Compatibilidad con el método anterior
-                    humanModeManager.setHumanMode(phone, isHumanMode);
-                    logger.log('SYSTEM', `Modo ${isHumanMode ? 'HUMANO' : 'IA'} establecido para ${phone}`);
-                    
-                    res.json({ 
-                        success: true, 
-                        phone, 
-                        isHumanMode,
-                        message: `Modo ${isHumanMode ? 'HUMANO' : 'IA'} activado para ${phone}`
-                    });
-                }
-            } catch (error) {
-                console.error('Error actualizando estado humano:', error);
-                res.status(500).json({ error: 'Error interno del servidor' });
-            }
-        });
 
-        this.app.delete('/api/human-states/:phone', (req, res) => {
-            try {
-                const { phone } = req.params;
-                humanModeManager.removeContact(phone);
-                logger.log('SYSTEM', `Contacto ${phone} removido de gestión humana`);
-                
-                res.json({ 
-                    success: true, 
-                    message: `Contacto ${phone} removido`
-                });
-            } catch (error) {
-                console.error('Error removiendo contacto:', error);
-                res.status(500).json({ error: 'Error interno del servidor' });
-            }
-        });
-
-        // API endpoint para obtener reportes con información de ventas
-        this.app.get('/api/reports/:date?', async (req, res) => {
-            try {
-                let dateParam = req.params.date || 'all';
-                let logs = [];
-                
-                // Manejar diferentes tipos de fecha
-                if (dateParam === 'all') {
-                    // Obtener TODOS los logs de la BD sin filtro de fecha
-                    logs = await logger.getLogs(null, 10000); // null = sin filtro de fecha, 10000 = límite alto
-                } else if (dateParam === 'month') {
-                    // Obtener todos los logs del mes actual
-                    const today = new Date();
-                    const year = today.getFullYear();
-                    const month = String(today.getMonth() + 1).padStart(2, '0');
-                    
-                    // Obtener todos los días del mes
-                    const daysInMonth = new Date(year, today.getMonth() + 1, 0).getDate();
-                    for (let day = 1; day <= daysInMonth; day++) {
-                        const dateStr = `${year}-${month}-${String(day).padStart(2, '0')}`;
-                        const dayLogs = await logger.getLogs(dateStr);
-                        logs = logs.concat(dayLogs);
-                    }
-                } else if (dateParam === 'week') {
-                    // Obtener logs de la última semana
-                    const today = new Date();
-                    for (let i = 0; i < 7; i++) {
-                        const date = new Date(today);
-                        date.setDate(date.getDate() - i);
-                        const dateStr = date.toISOString().split('T')[0];
-                        const dayLogs = await logger.getLogs(dateStr);
-                        logs = logs.concat(dayLogs);
-                    }
-                } else if (dateParam === 'today') {
-                    const date = new Date().toISOString().split('T')[0];
-                    logs = await logger.getLogs(date);
-                } else if (dateParam === 'yesterday') {
-                    const yesterday = new Date();
-                    yesterday.setDate(yesterday.getDate() - 1);
-                    const date = yesterday.toISOString().split('T')[0];
-                    logs = await logger.getLogs(date);
-                } else {
-                    // Fecha específica
-                    logs = await logger.getLogs(dateParam);
-                }
-                const salesData = await salesManager.getAllSalesData();
-                const humanStates = await humanModeManager.getAllHumanStates();
-                
-                // Agrupar conversaciones por usuario
-                const conversationsByUser = {};
-                
-                logs.forEach(log => {
-                    if (!log.userId) return;
-
-                    // Obtener fecha del log
-                    const logDate = new Date(log.timestamp).toISOString().split('T')[0];
-
-                    if (!conversationsByUser[log.userId]) {
-                        conversationsByUser[log.userId] = {
-                            id: '',
-                            telefono: log.userId,
-                            fecha: logDate,
-                            hora: '',
-                            mensajes: 0,
-                            posibleVenta: false,
-                            ventaCerrada: false,
-                            citaAgendada: false,
-                            soporteActivado: false,
-                            modoHumano: false,
-                            isGroup: Boolean(log.isGroup),
-                            conversacion: [],
-                            primerMensaje: null,
-                            ultimoMensaje: null
-                        };
-                    }
-                    
-                    const conv = conversationsByUser[log.userId];
-                    
-                    // Contar mensajes (incluir todos los tipos relevantes)
-                    if (log.type === 'USER' || log.type === 'BOT' || log.type === 'HUMAN' || 
-                        log.role === 'cliente' || log.role === 'bot' || log.role === 'soporte') {
-                        conv.mensajes++;
-                        conv.conversacion.push({
-                            type: log.type,
-                            role: log.role,
-                            message: log.message,
-                            timestamp: log.timestamp
-                        });
-                        
-                        // Registrar primer y último mensaje
-                        if (!conv.primerMensaje) {
-                            conv.primerMensaje = log.timestamp;
-                            conv.hora = new Date(log.timestamp).toLocaleTimeString('es-ES', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            });
-                        }
-                        conv.ultimoMensaje = log.timestamp;
-                    }
-                    
-                    // Detectar si hubo soporte o modo humano
-                    if (log.type === 'HUMAN' || log.role === 'soporte') {
-                        conv.soporteActivado = true;
-                    }
-                    if (log.type === 'SYSTEM' && log.message && log.message.includes('Modo SOPORTE activado')) {
-                        conv.soporteActivado = true;
-                    }
-                    if (log.type === 'SYSTEM' && log.message && log.message.includes('Modo HUMANO establecido')) {
-                        conv.modoHumano = true;
-                    }
-                });
-                
-                // Generar reportes finales
-                const reports = [];
-                let idCounter = 1;
-                
-                for (const [userId, conv] of Object.entries(conversationsByUser)) {
-                    // Generar ID único para la conversación usando la fecha real del log
-                    const conversationId = salesManager.generateConversationId(userId, conv.fecha);
-                    conv.id = `${conv.fecha}-${String(idCounter).padStart(3, '0')}`;
-                    
-                    // Obtener estado de ventas (AWAIT es crítico aquí)
-                    const saleStatus = await salesManager.getSaleStatus(conversationId);
-                    conv.posibleVenta = saleStatus.posibleVenta || false;
-                    conv.ventaCerrada = saleStatus.ventaCerrada || saleStatus.analizadoIA || false;
-                    conv.analizadoIA = saleStatus.analizadoIA || false;
-                    conv.citaAgendada = saleStatus.citaAgendada || false;
-                    
-                    console.log(`Estado cargado para ${userId}:`, {
-                        posibleVenta: conv.posibleVenta,
-                        analizadoIA: conv.analizadoIA,
-                        citaAgendada: conv.citaAgendada
-                    });
-                    
-                    // Verificar estado actual de modo humano/soporte
-                    const currentMode = humanModeManager.getMode(userId);
-                    if (currentMode === 'support') {
-                        conv.soporteActivado = true;
-                    } else if (currentMode === 'human' || currentMode === true) {
-                        conv.modoHumano = true;
-                    }
-                    
-                    reports.push(conv);
-                    idCounter++;
-                }
-                
-                // Ordenar por hora de primer mensaje
-                reports.sort((a, b) => {
-                    if (a.primerMensaje && b.primerMensaje) {
-                        return new Date(a.primerMensaje) - new Date(b.primerMensaje);
-                    }
-                    return 0;
-                });
-                
-                res.json(reports);
-            } catch (error) {
-                console.error('Error generando reportes:', error);
-                res.status(500).json({ error: 'Error interno del servidor' });
-            }
-        });
-
-        // API endpoint para actualizar estado de venta
-        this.app.post('/api/reports/sale-status', async (req, res) => {
-            try {
-                const { conversationId, phone, date, posibleVenta, ventaCerrada, citaAgendada, notas } = req.body;
-                
-                let id = conversationId;
-                if (!id && phone && date) {
-                    id = salesManager.generateConversationId(phone, date);
-                }
-                
-                if (!id) {
-                    return res.status(400).json({ error: 'Se requiere conversationId o phone y date' });
-                }
-                
-                // Guardar en la base de datos usando setSaleStatus
-                const result = await salesManager.setSaleStatus(id, {
-                    posibleVenta,
-                    ventaCerrada,
-                    citaAgendada,
-                    notas
-                });
-                
-                res.json({ success: true, data: result });
-            } catch (error) {
-                console.error('Error actualizando estado de venta:', error);
-                res.status(500).json({ error: 'Error interno del servidor' });
-            }
-        });
-
-        // API endpoint para obtener estadísticas de ventas
-        this.app.get('/api/sales-stats/:date?', (req, res) => {
-            try {
-                const date = req.params.date || null;
-                const stats = salesManager.getSalesStats(date);
-                res.json(stats);
-            } catch (error) {
-                console.error('Error obteniendo estadísticas de ventas:', error);
-                res.status(500).json({ error: 'Error interno del servidor' });
-            }
-        });
-
-        // API endpoint para analizar conversación con IA
-        this.app.post('/api/analyze-conversation', async (req, res) => {
-            try {
-                const { messages } = req.body;
-                
-                if (!messages || !Array.isArray(messages)) {
-                    return res.status(400).json({ error: 'Se requiere un array de mensajes' });
-                }
-                
-                const analysis = await conversationAnalyzer.analyzeConversation(messages);
-                res.json(analysis);
-            } catch (error) {
-                console.error('Error analizando conversación:', error);
-                res.status(500).json({ error: 'Error interno del servidor' });
-            }
-        });
-
-        // ===== ENDPOINTS DE GESTIÓN DE CSV (SOLO ADMIN) =====
-        
         // Configurar multer para subida de archivos
         const upload = multer({
             storage: multer.memoryStorage(),
             limits: { fileSize: 10 * 1024 * 1024 }, // Límite de 10MB
             fileFilter: (req, file, cb) => {
-                // Permitir CSV para uploads de naves
-                if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
-                    cb(null, true);
-                }
                 // Permitir multimedia para envío por WhatsApp
-                else if (
+                if (
                     file.mimetype.startsWith('image/') ||
                     file.mimetype === 'application/pdf' ||
                     file.mimetype.includes('document') ||
@@ -603,139 +341,6 @@ class WebServer {
             }
         });
 
-        // Subir archivo CSV
-        this.app.post('/api/csv/upload', requireAdmin, upload.single('csv'), async (req, res) => {
-            try {
-                if (!req.file) {
-                    return res.status(400).json({ error: 'No se proporcionó archivo CSV' });
-                }
-
-                const result = await csvService.saveCSV(
-                    req.file.originalname,
-                    req.file.buffer.toString('utf8')
-                );
-
-                res.json(result);
-            } catch (error) {
-                console.error('Error subiendo CSV:', error);
-                res.status(500).json({ error: error.message });
-            }
-        });
-
-        // Listar archivos CSV subidos
-        this.app.get('/api/csv/list', requireAdmin, async (req, res) => {
-            try {
-                const files = await csvService.listCSVFiles();
-                res.json({ files });
-            } catch (error) {
-                console.error('Error listando CSVs:', error);
-                res.status(500).json({ error: 'Error obteniendo lista de archivos' });
-            }
-        });
-
-        // Eliminar archivo CSV
-        this.app.delete('/api/csv/delete/:filename', requireAdmin, async (req, res) => {
-            try {
-                const result = await csvService.deleteCSV(req.params.filename);
-                res.json(result);
-            } catch (error) {
-                console.error('Error eliminando CSV:', error);
-                res.status(500).json({ error: error.message });
-            }
-        });
-
-        // Descargar plantilla CSV
-        this.app.get('/api/csv/template', (req, res) => {
-            try {
-                const templateContent = `Parque Industrial,Ubicación,Tipo,Ancho,Largo,Area (m2),Precio,Estado,Información Extra,Ventajas Estratégicas
-Vernes,Carr. México - Qro,Nave Industrial,50,30,1500,750000,Disponible,Incluye oficinas administrativas,Acceso directo a autopistas principales
-LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con muelle de carga,Zona de alto flujo comercial`;
-
-                res.setHeader('Content-Type', 'text/csv');
-                res.setHeader('Content-Disposition', 'attachment; filename="plantilla_naves.csv"');
-                res.send(templateContent);
-            } catch (error) {
-                console.error('Error descargando plantilla CSV:', error);
-                res.status(500).json({ error: 'Error generando plantilla' });
-            }
-        });
-
-        // Buscar en CSVs (endpoint interno para la IA)
-        this.app.post('/api/csv/search', requireAuth, async (req, res) => {
-            try {
-                const { query } = req.body;
-                if (!query) {
-                    return res.status(400).json({ error: 'Query es requerido' });
-                }
-
-                const results = await csvService.searchInCSV(query);
-                res.json({ results });
-            } catch (error) {
-                console.error('Error buscando en CSV:', error);
-                res.status(500).json({ error: 'Error en la búsqueda' });
-            }
-        });
-
-        // API endpoint para finalizar conversación
-        this.app.post('/api/end-conversation', async (req, res) => {
-            try {
-                const { phone } = req.body;
-
-                if (!phone) {
-                    return res.status(400).json({
-                        error: 'Phone is required',
-                        details: 'Debe proporcionar el teléfono'
-                    });
-                }
-
-                // Verificar si hay una instancia activa del bot
-                if (!global.whatsappBot || !global.whatsappBot.sock) {
-                    return res.status(503).json({
-                        error: 'WhatsApp bot not available',
-                        details: 'El bot de WhatsApp no está conectado'
-                    });
-                }
-
-                // Formatear el número de teléfono para WhatsApp
-                let formattedPhone = phone;
-                if (!phone.includes('@')) {
-                    formattedPhone = `${phone}@c.us`; // whatsapp-web.js usa @c.us
-                }
-
-                // Enviar mensaje de finalización
-                const endMessage = '⏰ Tu sesión de conversación ha finalizado. Puedes escribirme nuevamente para iniciar una nueva conversación.';
-                // WPPConnect usa client.sendText para mensajes de texto
-                await global.whatsappBot.client.sendText(formattedPhone, endMessage);
-
-                // Registrar el mensaje de finalización en los logs como mensaje del BOT
-                const cleanPhone = phone.replace('@c.us', '').replace('@g.us', '');
-                const isGroup = phone.includes('@g.us') || formattedPhone.includes('@g.us');
-                logger.log('BOT', endMessage, cleanPhone, null, isGroup);
-
-                // Limpiar la sesión
-                const sessionManager = require('../services/sessionManager');
-                sessionManager.clearSession(phone);
-
-                // Cambiar a modo IA si estaba en modo humano
-                humanModeManager.setMode(phone, false);
-
-                // Registrar el evento
-                logger.log('SYSTEM', `Conversación finalizada manualmente para ${phone}`, phone);
-
-                res.json({
-                    success: true,
-                    message: 'Conversación finalizada correctamente',
-                    phone: phone
-                });
-
-            } catch (error) {
-                console.error('Error finalizando conversación:', error);
-                res.status(500).json({
-                    error: 'Error al finalizar conversación',
-                    details: error.message
-                });
-            }
-        });
 
         // API endpoint para archivar conversación
         this.app.post('/api/archive-conversation', requireAuth, async (req, res) => {
@@ -843,13 +448,6 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
                 // Eliminar mensajes de los logs
                 await logger.deleteConversation(cleanPhone);
 
-                // Limpiar la sesión si existe
-                const sessionManager = require('../services/sessionManager');
-                sessionManager.clearSession(phone);
-
-                // Cambiar a modo IA si estaba en modo humano
-                humanModeManager.setMode(phone, false);
-
                 // Registrar el evento
                 logger.log('SYSTEM', `Conversación eliminada para ${cleanPhone}`, cleanPhone);
 
@@ -868,68 +466,6 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             }
         });
 
-        // API endpoint para salir de un grupo
-        this.app.post('/api/leave-group', async (req, res) => {
-            try {
-                const { phone } = req.body;
-
-                if (!phone) {
-                    return res.status(400).json({
-                        error: 'Phone is required',
-                        details: 'Debe proporcionar el ID del grupo'
-                    });
-                }
-
-                // Verificar si hay una instancia activa del bot
-                if (!global.whatsappBot || !global.whatsappBot.sock) {
-                    return res.status(503).json({
-                        error: 'WhatsApp bot not available',
-                        details: 'El bot de WhatsApp no está conectado'
-                    });
-                }
-
-                // Formatear el ID del grupo para WhatsApp
-                let groupId = phone;
-                if (!phone.includes('@')) {
-                    groupId = `${phone}@g.us`;
-                }
-
-                // Verificar que sea un grupo
-                if (!groupId.endsWith('@g.us')) {
-                    return res.status(400).json({
-                        error: 'Invalid group ID',
-                        details: 'El ID proporcionado no es un grupo de WhatsApp'
-                    });
-                }
-
-                // Salir del grupo usando Baileys
-                await global.whatsappBot.sock.groupLeave(groupId);
-
-                // Registrar el evento
-                const cleanPhone = phone.replace('@g.us', '');
-                logger.log('SYSTEM', `Bot salió del grupo ${cleanPhone}`, cleanPhone);
-
-                // Limpiar la sesión del grupo
-                const sessionManager = require('../services/sessionManager');
-                sessionManager.clearSession(phone);
-
-                // Eliminar de modo humano si existe
-                humanModeManager.removeContact(phone);
-
-                res.json({
-                    success: true,
-                    message: 'Bot salió del grupo correctamente',
-                    groupId: phone
-                });
-
-            } catch (error) {
-                console.error('Error saliendo del grupo:', error);
-                res.status(500).json({
-                    error: 'Error al salir del grupo',
-                    details: error.message
-                });
-            }
-        });
 
         // API endpoint para enviar archivos multimedia
         this.app.post('/api/send-media', requireAuth, upload.single('file'), async (req, res) => {
@@ -1105,175 +641,105 @@ LuisOnorio,Av. Constituyentes,Micronave,25,20,500,350000,Pre-Venta,Cuenta con mu
             }
         });
 
-        // ===== ENDPOINTS DE CONFIGURACIÓN DEL SISTEMA =====
 
-        // Obtener todas las configuraciones
-        this.app.get('/api/system-config', requireAuth, async (req, res) => {
+        // ===== ENDPOINTS DE WHATSAPP BAJO DEMANDA =====
+
+        // Conectar WhatsApp - Inicia instancia solo cuando el usuario lo solicita
+        this.app.post('/api/whatsapp/connect', requireAuth, async (req, res) => {
             try {
-                const configs = await systemConfigService.getAllConfigs();
-                res.json(configs);
-            } catch (error) {
-                console.error('Error obteniendo configuraciones:', error);
-                res.status(500).json({ error: 'Error obteniendo configuraciones' });
-            }
-        });
+                const userId = req.user.id;
+                const userName = req.user.name || req.user.email;
+                const instanceManager = global.whatsappInstanceManager;
 
-        // Obtener una configuración específica
-        this.app.get('/api/system-config/:key', requireAuth, async (req, res) => {
-            try {
-                const { key } = req.params;
-                const value = await systemConfigService.getConfig(key);
-                res.json({ key, value });
-            } catch (error) {
-                console.error(`Error obteniendo configuración ${req.params.key}:`, error);
-                res.status(500).json({ error: 'Error obteniendo configuración' });
-            }
-        });
-
-        // Actualizar una configuración (solo admin)
-        this.app.put('/api/system-config/:key', requireAdmin, async (req, res) => {
-            try {
-                const { key } = req.params;
-                const { value } = req.body;
-
-                if (value === undefined) {
-                    return res.status(400).json({ error: 'Value is required' });
+                if (!instanceManager) {
+                    return res.status(503).json({ error: 'Instance manager no disponible' });
                 }
 
-                const success = await systemConfigService.setConfig(key, value);
-
-                if (success) {
-                    res.json({ success: true, key, value });
-                } else {
-                    res.status(500).json({ error: 'Error actualizando configuración' });
-                }
-            } catch (error) {
-                console.error(`Error actualizando configuración ${req.params.key}:`, error);
-                res.status(500).json({ error: 'Error actualizando configuración' });
-            }
-        });
-
-        // Endpoint específico para toggle de IA en grupos
-        this.app.post('/api/system-config/groups-ai-toggle', requireAdmin, async (req, res) => {
-            try {
-                const { enabled } = req.body;
-
-                if (typeof enabled !== 'boolean') {
-                    return res.status(400).json({ error: 'enabled debe ser un booleano' });
+                // Verificar si ya tiene una instancia activa
+                const existingInstance = instanceManager.getInstance(userId);
+                if (existingInstance && existingInstance.status !== 'disconnected') {
+                    return res.json({
+                        success: true,
+                        message: 'Instancia ya existe',
+                        status: existingInstance.status,
+                        qr: existingInstance.qr || null
+                    });
                 }
 
-                const success = await systemConfigService.setGroupsAIEnabled(enabled);
+                console.log(`🚀 Usuario ${userName} solicitó conectar WhatsApp`);
 
-                if (success) {
-                    logger.log('SYSTEM', `IA en grupos ${enabled ? 'activada' : 'desactivada'}`);
+                // Iniciar instancia bajo demanda
+                const instance = await instanceManager.startInstance(userId, userName);
+
+                if (instance) {
                     res.json({
                         success: true,
-                        enabled,
-                        message: `IA en grupos ${enabled ? 'activada' : 'desactivada'} correctamente`
+                        message: 'Instancia iniciando, espera el código QR',
+                        status: 'initializing'
                     });
                 } else {
-                    res.status(500).json({ error: 'Error actualizando configuración' });
+                    res.status(503).json({
+                        success: false,
+                        error: 'No se pudo iniciar la instancia (límite alcanzado)'
+                    });
                 }
             } catch (error) {
-                console.error('Error en toggle de IA en grupos:', error);
-                res.status(500).json({ error: 'Error actualizando configuración' });
+                console.error('Error conectando WhatsApp:', error);
+                res.status(500).json({ error: 'Error iniciando conexión WhatsApp' });
             }
         });
 
-        // Endpoint específico para toggle de IA individual
-        this.app.post('/api/system-config/individual-ai-toggle', requireAdmin, async (req, res) => {
+        // Obtener estado de MI instancia de WhatsApp
+        this.app.get('/api/whatsapp/status', requireAuth, (req, res) => {
             try {
-                const { enabled } = req.body;
+                const userId = req.user.id;
+                const instanceManager = global.whatsappInstanceManager;
 
-                if (typeof enabled !== 'boolean') {
-                    return res.status(400).json({ error: 'enabled debe ser un booleano' });
+                if (!instanceManager) {
+                    return res.status(503).json({ error: 'Instance manager no disponible' });
                 }
 
-                const success = await systemConfigService.setIndividualAIEnabled(enabled);
+                const instance = instanceManager.getInstance(userId);
 
-                if (success) {
-                    logger.log('SYSTEM', `IA individual ${enabled ? 'activada' : 'desactivada'}`);
-                    res.json({
-                        success: true,
-                        enabled,
-                        message: `IA individual ${enabled ? 'activada' : 'desactivada'} correctamente`
+                if (!instance) {
+                    return res.json({
+                        connected: false,
+                        status: 'not_started',
+                        message: 'No hay instancia activa. Haz clic en Conectar para iniciar.'
                     });
-                } else {
-                    res.status(500).json({ error: 'Error actualizando configuración' });
                 }
-            } catch (error) {
-                console.error('Error en toggle de IA individual:', error);
-                res.status(500).json({ error: 'Error actualizando configuración' });
-            }
-        });
-
-        // ===== ENDPOINTS DE GESTIÓN DE PROMPTS =====
-
-        // Obtener ambos prompts
-        this.app.get('/api/prompts', requireAuth, async (req, res) => {
-            try {
-                const individualPrompt = promptLoader.load();
-                const groupPrompt = promptLoader.loadGroupPrompt();
 
                 res.json({
-                    individual: individualPrompt,
-                    group: groupPrompt
+                    connected: instance.status === 'connected',
+                    status: instance.status,
+                    qr: instance.status === 'qr_ready' ? instance.qr : null,
+                    phone: instance.phone || null
                 });
             } catch (error) {
-                console.error('Error obteniendo prompts:', error);
-                res.status(500).json({ error: 'Error obteniendo prompts' });
+                console.error('Error obteniendo estado WhatsApp:', error);
+                res.status(500).json({ error: 'Error obteniendo estado' });
             }
         });
 
-        // Actualizar prompt individual (solo admin)
-        this.app.put('/api/prompts/individual', requireAdmin, async (req, res) => {
+        // Desconectar WhatsApp
+        this.app.post('/api/whatsapp/disconnect', requireAuth, async (req, res) => {
             try {
-                const { prompt } = req.body;
+                const userId = req.user.id;
+                const instanceManager = global.whatsappInstanceManager;
 
-                if (!prompt || typeof prompt !== 'string') {
-                    return res.status(400).json({ error: 'Prompt es requerido y debe ser un string' });
+                if (!instanceManager) {
+                    return res.status(503).json({ error: 'Instance manager no disponible' });
                 }
 
-                const success = promptLoader.update(prompt);
+                await instanceManager.stopInstance(userId);
 
-                if (success) {
-                    logger.log('SYSTEM', 'Prompt individual actualizado');
-                    res.json({
-                        success: true,
-                        message: 'Prompt individual actualizado correctamente'
-                    });
-                } else {
-                    res.status(500).json({ error: 'Error actualizando prompt' });
-                }
+                res.json({
+                    success: true,
+                    message: 'WhatsApp desconectado'
+                });
             } catch (error) {
-                console.error('Error actualizando prompt individual:', error);
-                res.status(500).json({ error: 'Error actualizando prompt' });
-            }
-        });
-
-        // Actualizar prompt de grupos (solo admin)
-        this.app.put('/api/prompts/group', requireAdmin, async (req, res) => {
-            try {
-                const { prompt } = req.body;
-
-                if (!prompt || typeof prompt !== 'string') {
-                    return res.status(400).json({ error: 'Prompt es requerido y debe ser un string' });
-                }
-
-                const success = promptLoader.updateGroupPrompt(prompt);
-
-                if (success) {
-                    logger.log('SYSTEM', 'Prompt de grupos actualizado');
-                    res.json({
-                        success: true,
-                        message: 'Prompt de grupos actualizado correctamente'
-                    });
-                } else {
-                    res.status(500).json({ error: 'Error actualizando prompt' });
-                }
-            } catch (error) {
-                console.error('Error actualizando prompt de grupos:', error);
-                res.status(500).json({ error: 'Error actualizando prompt' });
+                console.error('Error desconectando WhatsApp:', error);
+                res.status(500).json({ error: 'Error desconectando' });
             }
         });
 

@@ -1,12 +1,6 @@
 const wppconnect = require('@wppconnect-team/wppconnect');
 const database = require('./database');
 const logger = require('./logger');
-const aiService = require('./aiService');
-const sessionManager = require('./sessionManager');
-const promptLoader = require('./promptLoader');
-const humanModeManager = require('./humanModeManager');
-const followUpService = require('./followUpService');
-const systemConfigService = require('./systemConfigService');
 const path = require('path');
 const fs = require('fs').promises;
 const { exec } = require('child_process');
@@ -19,20 +13,121 @@ class WhatsAppInstanceManager {
         this.maxGlobalReconnects = 10;
         this.lastGlobalReconnectReset = Date.now();
         this.globalReconnectWindow = 60000;
+        this.QR_EXPIRATION_TIME = 45000; // QR expira en ~45 segundos
+        this.HEARTBEAT_INTERVAL = 30000; // Verificar instancias cada 30 seg
+        this.heartbeatTimer = null;
+    }
+
+    // Iniciar monitoreo de instancias (heartbeat)
+    startHeartbeat() {
+        if (this.heartbeatTimer) return;
+
+        console.log('💓 Iniciando heartbeat de instancias...');
+        this.heartbeatTimer = setInterval(() => this.checkInstancesHealth(), this.HEARTBEAT_INTERVAL);
+    }
+
+    // Detener heartbeat
+    stopHeartbeat() {
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+        }
+    }
+
+    // Verificar salud de todas las instancias
+    async checkInstancesHealth() {
+        for (const [userId, instance] of this.instances.entries()) {
+            try {
+                // Verificar si el QR ha expirado (sin escanear por más de 45 seg)
+                if (instance.status === 'qr_ready' && instance.qrGeneratedAt) {
+                    const qrAge = Date.now() - instance.qrGeneratedAt;
+                    if (qrAge > this.QR_EXPIRATION_TIME) {
+                        console.log(`⏰ QR expirado para usuario ${userId} (${Math.round(qrAge/1000)}s) - Regenerando...`);
+                        await this.regenerateQR(userId);
+                    }
+                }
+
+                // Verificar si la instancia está en estado zombie (initializing por más de 2 min)
+                if (instance.status === 'initializing' && instance.startedAt) {
+                    const initTime = Date.now() - instance.startedAt;
+                    if (initTime > 120000) { // 2 minutos
+                        console.log(`🧟 Instancia zombie detectada para usuario ${userId} - Reiniciando...`);
+                        await this.stopInstance(userId);
+                        this.scheduleReconnect(userId, instance.instanceName, 1);
+                    }
+                }
+
+                // Verificar conectividad si está conectada
+                if (instance.status === 'connected' && instance.client) {
+                    try {
+                        const state = await instance.client.getConnectionState();
+                        if (state !== 'CONNECTED') {
+                            console.log(`⚠️ Instancia ${userId} reporta estado: ${state}`);
+                            instance.status = 'disconnected';
+                            this.scheduleReconnect(userId, instance.instanceName, 1);
+                        }
+                    } catch (err) {
+                        console.log(`❌ Error verificando instancia ${userId}: ${err.message}`);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error en heartbeat para usuario ${userId}:`, error.message);
+            }
+        }
+    }
+
+    // Regenerar QR para una instancia
+    async regenerateQR(supportUserId) {
+        const instance = this.instances.get(supportUserId);
+        if (!instance || !instance.client) return;
+
+        try {
+            instance.qrRegenerationAttempts = (instance.qrRegenerationAttempts || 0) + 1;
+
+            if (instance.qrRegenerationAttempts > instance.maxQrRegenerations) {
+                console.log(`❌ Máximo de regeneraciones de QR alcanzado para usuario ${supportUserId}`);
+                return;
+            }
+
+            // WPPConnect regenera QR automáticamente, solo actualizamos el timestamp
+            instance.qrGeneratedAt = Date.now();
+            console.log(`🔄 QR refresh para usuario ${supportUserId} (intento ${instance.qrRegenerationAttempts})`);
+        } catch (error) {
+            console.error(`Error regenerando QR para ${supportUserId}:`, error.message);
+        }
     }
 
     // Matar procesos zombie de Chrome del proyecto antes de iniciar
     async killZombieChrome() {
         return new Promise((resolve) => {
             const tokensPath = path.join(process.cwd(), 'tokens');
-            const cmd = `pkill -f "user-data-dir=${tokensPath}" 2>/dev/null || true`;
 
-            exec(cmd, (error, stdout, stderr) => {
-                if (!error) {
-                    console.log('🧹 Procesos zombie de Chrome limpiados');
-                }
-                // Esperar un momento para que los procesos terminen
-                setTimeout(resolve, 1000);
+            // Matar TODOS los procesos Chrome/Chromium
+            const killCmd = `pkill -9 -f "chromium" 2>/dev/null; pkill -9 -f "chrome" 2>/dev/null; killall -9 chromium-browser 2>/dev/null; true`;
+
+            exec(killCmd, (error, stdout, stderr) => {
+                console.log('🧹 Procesos zombie de Chrome limpiados');
+
+                // Eliminar lock files de todas las sesiones
+                const cleanLocksCmd = `rm -f ${tokensPath}/*/SingletonLock ${tokensPath}/*/SingletonCookie ${tokensPath}/*/SingletonSocket 2>/dev/null || true`;
+
+                exec(cleanLocksCmd, (err) => {
+                    console.log('🔓 Lock files eliminados');
+                    // Esperar para que los procesos terminen completamente
+                    setTimeout(resolve, 2000);
+                });
+            });
+        });
+    }
+
+    // Limpiar locks de un usuario específico antes de iniciar
+    async cleanUserLocks(supportUserId) {
+        const tokensPath = path.join(process.cwd(), 'tokens', `user_${supportUserId}`);
+        const cmd = `rm -f ${tokensPath}/SingletonLock ${tokensPath}/SingletonCookie ${tokensPath}/SingletonSocket 2>/dev/null || true`;
+
+        return new Promise((resolve) => {
+            exec(cmd, () => {
+                resolve();
             });
         });
     }
@@ -116,6 +211,9 @@ class WhatsAppInstanceManager {
 
             console.log(`🚀 Iniciando instancia WPPConnect para usuario ${supportUserId}...`);
 
+            // Limpiar lock files del usuario antes de intentar iniciar
+            await this.cleanUserLocks(supportUserId);
+
             // Verificar si ya existe una instancia activa
             if (this.instances.has(supportUserId)) {
                 const existing = this.instances.get(supportUserId);
@@ -169,7 +267,8 @@ class WhatsAppInstanceManager {
                 useChrome: true,
                 debug: false,
                 logQR: false,
-                autoClose: 120000, // Cerrar automáticamente después de 2 minutos si no hay conexión
+                autoClose: 300000, // 5 minutos - más tiempo para escanear QR
+                waitForLogin: true, // Esperar a que se complete el login
                 browserArgs: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -177,27 +276,37 @@ class WhatsAppInstanceManager {
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
                     '--no-zygote',
-                    '--disable-gpu'
+                    '--disable-gpu',
+                    '--disable-extensions',
+                    '--disable-background-networking'
                 ],
                 // Forzar directorio específico para este usuario
                 puppeteerOptions: {
-                    userDataDir: sessionPath
+                    userDataDir: sessionPath,
+                    timeout: 60000 // Timeout de 60 segundos para operaciones de Puppeteer
                 },
                 // Capturar QR
                 catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
                     console.log(`📱 QR generado para usuario ${supportUserId} (intento ${attempts}) - Disponible en panel web`);
 
-                    if (!instanceData.firstQrGenerated) {
-                        instanceData.firstQrGenerated = true;
+                    // Obtener instancia directamente del Map para evitar problemas de closure
+                    const inst = this.instances.get(supportUserId);
+                    if (!inst) {
+                        console.log(`⚠️ [catchQR] Instancia ${supportUserId} no encontrada en Map!`);
+                        return;
+                    }
+
+                    if (!inst.firstQrGenerated) {
+                        inst.firstQrGenerated = true;
                     }
 
                     // Actualizar estado inmediatamente
-                    instanceData.qr = base64Qr;
-                    instanceData.status = 'qr_ready';
-                    instanceData.qrGeneratedAt = Date.now();
-                    instanceData.qrAttempts = attempts;
+                    inst.qr = base64Qr;
+                    inst.status = 'qr_ready';
+                    inst.qrGeneratedAt = Date.now();
+                    inst.qrAttempts = attempts;
 
-                    console.log(`✅ QR actualizado en memoria para usuario ${supportUserId} - Status: ${instanceData.status}`);
+                    console.log(`✅ QR actualizado en Map para usuario ${supportUserId} - Status: ${inst.status}`);
 
                     // Actualizar en BD
                     this.updateInstanceInDB(supportUserId, {
@@ -213,12 +322,19 @@ class WhatsAppInstanceManager {
                 statusFind: (statusSession, session) => {
                     console.log(`📊 Estado de sesión ${supportUserId}: ${statusSession}`);
 
+                    // Obtener instancia directamente del Map
+                    const inst = this.instances.get(supportUserId);
+                    if (!inst) {
+                        console.log(`⚠️ [statusFind] Instancia ${supportUserId} no encontrada en Map!`);
+                        return;
+                    }
+
                     if (statusSession === 'isLogged' || statusSession === 'qrReadSuccess') {
-                        instanceData.status = 'connected';
-                        instanceData.hasBeenConnected = true;
-                        instanceData.firstQrGenerated = false;
-                        instanceData.reconnectAttempts = 0;
-                        instanceData.qrRegenerationAttempts = 0;
+                        inst.status = 'connected';
+                        inst.hasBeenConnected = true;
+                        inst.firstQrGenerated = false;
+                        inst.reconnectAttempts = 0;
+                        inst.qrRegenerationAttempts = 0;
 
                         console.log(`✅ WhatsApp conectado para usuario ${supportUserId}`);
 
@@ -233,13 +349,13 @@ class WhatsAppInstanceManager {
                         logger.log('SYSTEM', `Bot iniciado para usuario ${supportUserId}`, supportUserId, instanceName);
                     } else if (statusSession === 'autocloseCalled') {
                         // Se cerró automáticamente (timeout) - reintentar si no ha conectado
-                        if (!instanceData.hasBeenConnected) {
+                        if (!inst.hasBeenConnected) {
                             console.log(`⏰ Timeout para usuario ${supportUserId} - Reintentando...`);
-                            instanceData.status = 'disconnected';
-                            instanceData.reconnectAttempts++;
+                            inst.status = 'disconnected';
+                            inst.reconnectAttempts++;
 
-                            if (instanceData.reconnectAttempts < instanceData.maxReconnectAttempts) {
-                                this.scheduleReconnect(supportUserId, instanceName, instanceData.reconnectAttempts);
+                            if (inst.reconnectAttempts < inst.maxReconnectAttempts) {
+                                this.scheduleReconnect(supportUserId, instanceName, inst.reconnectAttempts);
                             } else {
                                 console.log(`❌ Máximo de reintentos alcanzado para usuario ${supportUserId}`);
                             }
@@ -248,16 +364,43 @@ class WhatsAppInstanceManager {
                         this.updateInstanceInDB(supportUserId, {
                             status: 'disconnected'
                         }).catch(err => console.error('Error actualizando BD:', err));
-                    } else if (statusSession === 'desconnectedMobile') {
-                        instanceData.status = 'disconnected';
+                    } else if (statusSession === 'desconnectedMobile' || statusSession === 'disconnectedMobile') {
                         console.log(`📱 WhatsApp desconectado desde el móvil para usuario ${supportUserId}`);
+
+                        // Solo reconectar si ya había conectado previamente (no si está esperando QR)
+                        if (inst.hasBeenConnected) {
+                            inst.status = 'disconnected';
+                            this.updateInstanceInDB(supportUserId, {
+                                status: 'disconnected'
+                            }).catch(err => console.error('Error actualizando BD:', err));
+
+                            // Reintentar conexión solo si ya había estado conectado
+                            this.scheduleReconnect(supportUserId, instanceName, 1);
+                        } else {
+                            // Si no había conectado, mantener esperando QR
+                            console.log(`⏳ Esperando escaneo de QR para usuario ${supportUserId}`);
+                        }
+                    } else if (statusSession === 'browserClose' || statusSession === 'serverClose') {
+                        inst.status = 'disconnected';
+                        console.log(`🔌 Navegador/servidor cerrado para usuario ${supportUserId}`);
 
                         this.updateInstanceInDB(supportUserId, {
                             status: 'disconnected'
                         }).catch(err => console.error('Error actualizando BD:', err));
 
-                        // Reintentar conexión
+                        // Reintentar conexión después de un delay
                         this.scheduleReconnect(supportUserId, instanceName, 1);
+                    } else if (statusSession === 'qrReadFail') {
+                        console.log(`❌ QR no leído correctamente para usuario ${supportUserId}`);
+                        inst.qrRegenerationAttempts++;
+                    } else if (statusSession === 'inChat') {
+                        // inChat solo significa que la interfaz está cargada
+                        // Solo marcar como connected si ya se había autenticado previamente
+                        if (inst.hasBeenConnected && inst.status !== 'connected') {
+                            inst.status = 'connected';
+                            console.log(`✅ En chat para usuario ${supportUserId}`);
+                        }
+                        // Si no ha conectado antes, probablemente está mostrando QR
                     }
                 }
             });
@@ -410,45 +553,14 @@ class WhatsAppInstanceManager {
             // Asignar cliente a este usuario de soporte si no está asignado
             await this.assignClientToUser(userId, supportUserId, false, null);
 
-            // YA NO HAY IA - Solo registrar el mensaje entrante
-            await logger.log('SYSTEM', `Mensaje recibido de ${userName} (${userId}) - Esperando respuesta humana`, supportUserId);
-
-            // Cancelar seguimiento si existe
-            if (followUpService.hasActiveFollowUp(userId)) {
-                await followUpService.cancelFollowUp(userId, 'Cliente respondió');
-            }
+            // Solo registrar el mensaje entrante
+            console.log(`📨 Mensaje recibido de ${userName} (${userId}) para usuario ${supportUserId}`);
 
         } catch (error) {
             console.error(`Error procesando mensaje (Usuario ${supportUserId}):`, error);
         }
     }
 
-    // Procesar mensaje y generar respuesta (para futuro uso con IA)
-    async processMessage(supportUserId, userId, userMessage, chatId) {
-        await sessionManager.addMessage(userId, 'user', userMessage, chatId);
-
-        const isGroup = chatId.endsWith('@g.us');
-        const systemPrompt = promptLoader.getPrompt(isGroup);
-
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            ...(await sessionManager.getMessages(userId, chatId))
-        ];
-
-        const aiResponse = await aiService.generateResponse(messages);
-
-        if (aiResponse.includes('{{ACTIVAR_SOPORTE}}')) {
-            const cleanResponse = aiResponse.replace('{{ACTIVAR_SOPORTE}}', '').trim();
-            await humanModeManager.setMode(userId, 'support');
-            await sessionManager.updateSessionMode(userId, chatId, 'support');
-            await sessionManager.addMessage(userId, 'assistant', cleanResponse, chatId);
-            await logger.log('SYSTEM', `Modo SOPORTE activado automáticamente para ${userId}`, supportUserId);
-            return cleanResponse;
-        }
-
-        await sessionManager.addMessage(userId, 'assistant', aiResponse, chatId);
-        return aiResponse;
-    }
 
     // Obtener asignación de cliente
     async getClientAssignment(clientPhone) {
@@ -684,6 +796,44 @@ class WhatsAppInstanceManager {
             'support_user_id = ?',
             [supportUserId]
         );
+    }
+
+    // Forzar reinicio de instancia (para cuando está atascada)
+    async forceRestartInstance(supportUserId) {
+        console.log(`🔄 Forzando reinicio de instancia ${supportUserId}...`);
+
+        const instance = this.instances.get(supportUserId);
+        const instanceName = instance?.instanceName || 'Usuario';
+
+        // Cancelar cualquier reconexión pendiente
+        this.cancelScheduledReconnect(supportUserId);
+
+        // Detener instancia actual
+        await this.stopInstance(supportUserId);
+
+        // Limpiar sesión si está corrupta
+        await this.clearSession(`user_${supportUserId}`);
+
+        // Pequeño delay antes de reiniciar
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Reiniciar
+        return await this.startInstance(supportUserId, instanceName);
+    }
+
+    // Obtener estadísticas del manager
+    getStats() {
+        const instances = Array.from(this.instances.entries());
+        return {
+            total: instances.length,
+            connected: instances.filter(([_, i]) => i.status === 'connected').length,
+            qrReady: instances.filter(([_, i]) => i.status === 'qr_ready').length,
+            initializing: instances.filter(([_, i]) => i.status === 'initializing').length,
+            disconnected: instances.filter(([_, i]) => i.status === 'disconnected').length,
+            reconnectQueue: this.reconnectQueue.size,
+            globalReconnects: this.globalReconnectCount,
+            heartbeatActive: !!this.heartbeatTimer
+        };
     }
 }
 

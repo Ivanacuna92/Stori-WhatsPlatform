@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { login } from '../services/api';
 import { ToastContainer } from './Toast';
 import { useToast } from '../hooks/useToast';
-import logoIcon from '../assets/legaxxi.png';
+import logoIcon from '../assets/logo-stori.png';
 
 function Login({ onLoginSuccess }) {
   const [formData, setFormData] = useState({
@@ -235,7 +235,7 @@ function Login({ onLoginSuccess }) {
 
           .mobile-input-large:focus {
             background: #ffffff !important;
-            border-color: #1B7F4A !important;
+            border-color: #FD6144 !important;
             box-shadow: 0 0 0 3px rgba(0, 204, 123, 0.08) !important;
             outline: none !important;
           }
@@ -244,7 +244,7 @@ function Login({ onLoginSuccess }) {
             padding: 1.2rem !important;
             font-size: 1.1rem !important;
             font-weight: 500 !important;
-            background: #1B7F4A !important;
+            background: #FD6144 !important;
             border: none !important;
             color: white !important;
             box-shadow: 0 4px 12px rgba(0, 204, 123, 0.2) !important;
@@ -253,7 +253,7 @@ function Login({ onLoginSuccess }) {
           }
 
           .mobile-button-large:hover {
-            background: #156B3D !important;
+            background: #FD3244 !important;
             transform: translateY(-1px) !important;
             box-shadow: 0 6px 16px rgba(0, 204, 123, 0.3) !important;
           }
@@ -291,7 +291,7 @@ function Login({ onLoginSuccess }) {
               <div className="w-full flex items-center justify-center">
                 <img
                   src={logoIcon}
-                  alt="Legaxxi"
+                  alt="Diestra"
                   className="w-48 h-32 md:w-56 md:h-36 mobile-logo-large object-contain"
                 />
               </div>
@@ -318,7 +318,7 @@ function Login({ onLoginSuccess }) {
                     borderColor: '#E8EBED'
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = '#1B7F4A';
+                    e.target.style.borderColor = '#FD6144';
                     e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
                   }}
                   onBlur={(e) => {
@@ -346,7 +346,7 @@ function Login({ onLoginSuccess }) {
                       borderColor: '#E8EBED'
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = '#1B7F4A';
+                      e.target.style.borderColor = '#FD6144';
                       e.target.style.boxShadow = '0 0 0 3px rgba(0, 204, 123, 0.08)';
                     }}
                     onBlur={(e) => {
@@ -362,10 +362,10 @@ function Login({ onLoginSuccess }) {
                     onClick={togglePassword}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 md:text-gray-400 mobile-text-dark transition-colors"
                     style={{
-                      color: showPassword ? '#1B7F4A' : '#9CA3AF'
+                      color: showPassword ? '#FD6144' : '#9CA3AF'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#1B7F4A';
+                      e.currentTarget.style.color = '#FD6144';
                     }}
                     onMouseLeave={(e) => {
                       if (!showPassword) {
@@ -398,16 +398,16 @@ function Login({ onLoginSuccess }) {
                 disabled={loading}
                 className="w-full text-white py-3 md:py-3 mobile-button-large rounded-xl transition-all text-sm md:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: '#1B7F4A'
+                  background: '#FD6144'
                 }}
                 onMouseEnter={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#156B3D';
+                    e.target.style.background = '#FD3244';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!loading) {
-                    e.target.style.background = '#1B7F4A';
+                    e.target.style.background = '#FD6144';
                   }
                 }}
               >
